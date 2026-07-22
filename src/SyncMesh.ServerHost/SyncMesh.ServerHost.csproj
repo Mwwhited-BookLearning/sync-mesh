@@ -10,4 +10,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SyncMesh.EventStore\SyncMesh.EventStore.csproj" />
+    <ProjectReference Include="..\SyncMesh.EventStore.Migrations.Postgres\SyncMesh.EventStore.Migrations.Postgres.csproj" />
+    <ProjectReference Include="..\SyncMesh.EventStore.Migrations.SqlServer\SyncMesh.EventStore.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\SyncMesh.ServiceDefaults\SyncMesh.ServiceDefaults.csproj" />
+  </ItemGroup>
+
 </Project>

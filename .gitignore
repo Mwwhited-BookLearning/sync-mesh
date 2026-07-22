@@ -88,7 +88,6 @@ nCrunchTemp_*
 # Local secrets / environment overrides — never commit connection strings,
 # NATS creds, or per-machine config for this multi-tier system.
 appsettings.*.local.json
-appsettings.Development.json
 *.env
 .env
 .env.*
