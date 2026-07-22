@@ -29,6 +29,23 @@ Connection strings are the one exception: those stay on the conventional
 `IConfiguration.GetConnectionString(...)` / Aspire service-discovery path,
 per ASP.NET Core convention, rather than being wrapped in `IOptions<T>`.
 
+**Smart defaults for compliance-adjacent values** (retention periods, audit
+windows, and similar): default to commonly recognized industry/regulatory
+practice for the relevant domain, not an arbitrary round number — e.g. the
+server-tier retention default follows common U.S. healthcare-record
+retention practice (see `docs/07-operations-guide.md` → "Retention
+default") rather than picking something like "90 days" out of the air. Two
+things every such default needs, without exception:
+1. **Cite what it's based on**, in the same place the default is set (a
+   doc comment above the `IOptions<T>` property, plus the operations
+   guide) — a bare number with no rationale is indistinguishable from a
+   guess six months later.
+2. **State plainly that it's a starting point, not a compliance sign-off.**
+   A smart default lets the system ship and run sensibly; it does not
+   substitute for a named compliance/legal owner confirming the figure
+   against the actual jurisdiction/accreditation this deployment operates
+   under. Don't let "we have a default" quietly become "this was decided."
+
 ## Operational vs. development ownership
 
 Where an open question is really an *operations* concern (backup schedules,

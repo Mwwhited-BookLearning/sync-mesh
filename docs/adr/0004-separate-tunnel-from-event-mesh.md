@@ -55,6 +55,19 @@ used for event sync, since the "relay via nearest server" idea is shared.
   surface at the relay point are not covered by this ADR and must not be
   assumed safe by default (see Open Questions in design doc).
 
+## Amendment (2026-07-22)
+
+Security baseline decided ahead of the full review still called out in the
+Follow-up above: the tunnel/relay path is TLS-secured and authenticates
+with registered service credentials scoped to the daemon/server instance —
+never end-user identity/permissions (same requirement as the event mesh,
+see `docs/adr/0002-nats-leaf-nodes-for-transport.md` Amendment). A remote
+user's own authorization for what they're allowed to view/control is a
+separate layer on top of this transport-level baseline, and is still part
+of what the dedicated security review must cover — this amendment doesn't
+close that Follow-up, it gives the review a starting baseline.
+
 ## Related
 
-`docs/00-design-document.md` §4.5, Open Question 5
+`docs/00-design-document.md` §4.5, Open Question 5,
+`docs/adr/0002-nats-leaf-nodes-for-transport.md`

@@ -73,22 +73,47 @@ flows (PlantUML source embedded inline in each Markdown file).
 - Keep the local app dependency-free with respect to the sync mesh; it
   should never need reconfiguration when the daemon's upstream topology
   changes.
+- The local app can also read back what it has already recorded this
+  session — a **buffered read**, served entirely from the daemon's own
+  local store. The daemon never proxies reads to/from the server to satisfy
+  this: it only ever holds what the local app itself is writing (or has
+  recently written), never a mirror of server-side history. See §4.2.
 
 ### 4.2 Tier 1 — Local Daemon ↔ Nearest Server
 
 - Transport: NATS leaf node. The daemon runs (or embeds) a NATS server
   configured as a leaf node dialing out to the nearest server's cluster.
-- Durability: local JetStream stream with **WorkQueue retention** and a
-  conservative `MaxAge`/`MaxMsgs` cap. This is a buffer, not a log — once
-  the nearest server acks receipt, the local copy can be discarded.
+- **Sync is one-way**: daemon → server, for writes only. The server never
+  pushes a mirror/replica of its dataset back down to the daemon — the
+  daemon has no need for "everything from the server," only what the local
+  user is actively writing or reading back locally (§4.1). Nothing in the
+  leaf-node topology should be used to sync data downstream.
+- Durability: local JetStream stream with **WorkQueue retention**.
+  Retention has a floor and a (configurable) ceiling, not a single fixed
+  cap:
+  - **Minimum**: at least until the nearest server acknowledges receipt —
+    never discard a locally-buffered event before it's confirmed upstream.
+    This is exactly what WorkQueue retention gives you: the local copy is
+    removed once consumed/acked, not before.
+  - **Maximum**: configurable (`IOptions<T>`, per `ARCHITECTURE.md` →
+    Configuration), defaulting to **unbounded except by available local
+    disk** — i.e. try to keep everything until the disk actually runs out,
+    rather than guessing at an outage duration up front. Ops can configure
+    a smaller explicit `MaxBytes`/`MaxAge`/`MaxMsgs` ceiling per deployment
+    if a bounded footprint is wanted instead.
 - Rationale for "durable only while recording": recording sessions are
   bounded in time; once a session ends and its events are confirmed
   received upstream, there is no requirement to retain them locally.
 - Failure mode: if the nearest server is unreachable, the leaf node queues
-  locally up to its cap and flushes automatically on reconnect. If a
-  recording session could plausibly exceed the buffer cap during an
-  extended outage, that is a capacity-planning question — see Open
-  Questions.
+  locally, growing up to whatever ceiling is configured (disk space by
+  default), and flushes automatically on reconnect. If local disk actually
+  fills before the server becomes reachable again, the safe behavior is to
+  **reject new local writes** (JetStream `Discard: New`, with the rejection
+  surfaced back to the local app) rather than evict any unacknowledged
+  event — evicting unacked data would violate the minimum-retention
+  guarantee above. This is not a business/product open question: it's the
+  only behavior consistent with the durability guarantee, so it's decided,
+  not left open.
 
 ### 4.3 Tier 2 — "Nearest Server" Selection
 
@@ -102,15 +127,30 @@ flows (PlantUML source embedded inline in each Markdown file).
 
 - Servers connect to each other via NATS gateway connections (supercluster)
   for peer-to-peer, and/or peer-to-cloud where a cloud region acts as a
-  hub.
+  hub. All server↔server (and daemon↔server) connections use TLS and
+  authenticate with **registered service credentials scoped to the
+  daemon/server instance** — never end-user identity/permissions. See
+  §4.5 and ADR-0002 for the same requirement applied to the tunnel path.
 - Full mesh must remain a supported gateway topology — nothing in the
-  design should architecturally foreclose it. At minimum scale, the system
-  must work correctly as either a **standalone** single server (no peers at
-  all) or a **hub-and-spoke** topology; full mesh is the thing to validate
-  once real node count/instability characteristics are known (see ADR-0002
-  and Open Question 4). Topology is a gateway/config concern, not a code
-  branch — the reconciliation logic (HLC ordering, idempotent apply) must
-  not assume any particular shape.
+  design should architecturally foreclose it. Hub-and-spoke is the default
+  starting shape for multi-site deployments; full mesh is the thing to
+  validate once real node count/instability characteristics are known (see
+  ADR-0002 and Open Question 4).
+- **Standalone is a first-class, permanent topology in its own right — not
+  merely a minimal starting point that's expected to eventually join a
+  mesh.** A single server with no peer connections at all must work
+  correctly, indefinitely, on its own. Some deployments may only ever
+  reconcile with other sites later, out-of-band (e.g. a batch/offline
+  export-import rather than a live NATS gateway connection). That works
+  without redesigning the reconciliation logic, because idempotent apply
+  and HLC ordering (below, ADR-0003) don't depend on *how* an event
+  arrives — only on its `GlobalEventId` + HLC being present. The specific
+  offline/batch sync mechanism itself (for a standalone site that later
+  needs it) is not yet designed — treat it as a distinct future decision,
+  not an assumed extension of live gateway topology.
+- Topology is a gateway/config concern, not a code branch — the
+  reconciliation logic (HLC ordering, idempotent apply) must not assume any
+  particular shape, live or offline.
 - Ordering is **not** guaranteed by the transport across sites. Every event
   carries a Hybrid Logical Clock (HLC) + origin site ID. The authoritative
   order is reconstructed at replay time, not assumed from arrival order.
@@ -130,6 +170,16 @@ flows (PlantUML source embedded inline in each Markdown file).
   WireGuard/Tailscale-style tooling). Attempt direct connectivity first;
   fall back to relaying through the nearest server when firewalls block
   direct access.
+- **Security baseline (decided, ahead of the full review in Open Question
+  5)**: the tunnel/relay path must be TLS-secured, and — like the rest of
+  the mesh (§4.4) — authenticates with **registered service credentials**,
+  not end-user permissions. A remote user's own identity/authorization for
+  *what they're allowed to view or control* is a separate, additional
+  layer on top of this — the transport-level connection itself never rides
+  on end-user credentials. This doesn't replace the dedicated security
+  review still required before production (attack surface, session
+  hijacking risk, the remote-user authorization layer itself) — it's the
+  baseline that review builds on.
 - Keep this tier's failure domain isolated from event sync — a monitoring
   outage must never affect recording durability or event delivery, and
   vice versa.
@@ -176,11 +226,16 @@ one — flag back to the human rather than resolving silently. Checked boxes
 mark what has actually been decided; unchecked items (or unchecked
 sub-items) are still open and should not be resolved without asking.
 
-- [ ] **1. Buffer cap sizing at the daemon.** What's the worst-case expected
-      outage duration for a recording session, and what event volume/size
-      should the local WorkQueue cap be sized against? *(Mechanism decided
-      — will ship as an `IOptions<T>` class with a smart default, see
-      `ARCHITECTURE.md` → Configuration. The actual value is still open.)*
+- [x] **1. Buffer cap sizing at the daemon.** Resolved: retention has a
+      floor and a configurable ceiling, not a single guessed number (see
+      §4.2). Minimum is until the nearest server acks receipt (never
+      discard unacknowledged data). Maximum defaults to unbounded except by
+      available local disk — store everything until the disk actually runs
+      out, rather than pre-guessing an outage duration — and is
+      configurable to a smaller explicit cap via `IOptions<T>` (see
+      `ARCHITECTURE.md` → Configuration). If local disk fills before the
+      server is reachable again, new local writes are rejected
+      (`Discard: New`) rather than evicting unacknowledged data.
 - [ ] **2. Leaf node reconnect-sync reliability.** There are known reports
       of gaps in leaf-node mirror sync after extended disconnection. This
       needs explicit integration testing against your actual outage
@@ -193,21 +248,47 @@ sub-items) are still open and should not be resolved without asking.
         purge-safety: whether purging (not just backing up) old rows is
         ever safe without breaking idempotent-apply or replay-ordering
         guarantees.
-  - [ ] Retention duration and RPO/RTO targets themselves are still an open
-        ops/business decision.
+  - [x] Smart default established (healthcare/clinical-adjacent data,
+        common U.S. industry practice — see `docs/07-operations-guide.md`
+        → "Retention default"): 7 years for adult records; a longer,
+        distinct default for minors (age of majority + additional years).
+        Ships as an `IOptions<T>` default per `ARCHITECTURE.md` →
+        Configuration, not a hardcoded constant.
+  - [ ] Sign-off from a named compliance/legal owner on the exact figures
+        (both adult and minor) for the actual jurisdiction(s)/accreditation
+        requirements this deployment operates under, plus RPO/RTO targets,
+        is still open. A smart default is a starting point, not that
+        sign-off.
 - **4. Full-mesh vs hub-and-spoke topology at scale.**
   - [x] Policy decided: full mesh must remain a supported gateway
-        topology — nothing in the design forecloses it. Standalone (single
-        server) and hub-and-spoke are the minimum-scale configurations
-        validated first.
-  - [ ] Which topology to actually default to at real scale is still open
-        — revisit once the number of server-tier sites and their
-        instability characteristics are known.
-- [ ] **5. Tunnel relay security model.** Relaying an interactive session
-      through the nearest server has real security implications (attack
-      surface, auth, session hijacking risk) that need a dedicated security
-      review before implementation — this doc only covers the
-      architectural shape.
+        topology — nothing in the design forecloses it. Hub-and-spoke is
+        the default starting shape for multi-site deployments.
+  - [x] Standalone (a single server, permanently, with no live peer
+        connections at all) is a first-class, valid deployment mode in its
+        own right — not a bootstrapping step toward a mesh. There is no
+        minimum node count. Any later reconciliation for such a site may
+        be offline/batch rather than a live gateway connection; this is
+        compatible with idempotent apply/HLC ordering without redesign
+        (see §4.4).
+  - [ ] Which topology (hub-and-spoke vs. full mesh) to actually default to
+        for *multi-site* deployments at real scale is still open — revisit
+        once the number of server-tier sites and their instability
+        characteristics are known.
+  - [ ] The offline/batch sync mechanism itself, for a standalone site that
+        later needs to reconcile with others out-of-band, is undesigned —
+        a distinct future decision, not assumed to just be "NATS gateways,
+        later."
+- **5. Tunnel relay security model.**
+  - [x] Security baseline decided (see §4.5): TLS-secured, authenticating
+        with registered service credentials scoped to the daemon/server
+        instance — never end-user permissions. A remote user's own
+        authorization for what they're allowed to view/control is a
+        separate layer on top of this transport-level baseline.
+  - [ ] The full dedicated security review is still required before
+        production: attack surface, the remote-user authorization layer
+        itself, session hijacking risk, etc. This doc only covers the
+        architectural shape — the baseline above doesn't substitute for
+        that review.
 - [x] **6. WCF/legacy interop boundary.** Resolved: out of scope for this
       project. If a specific external component ever needs WCF integration
       with an older on-prem system, that's implemented within that

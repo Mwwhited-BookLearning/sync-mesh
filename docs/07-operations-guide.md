@@ -35,10 +35,44 @@ infrastructure configuration, not application code:
   restore should be transparent to `EventStoreDbContext` — it's still just a
   PostgreSQL/SQL Server database with the same schema.
 
-**Still open (needs an ops/business decision, tracked in
-`docs/00-design-document.md` §8, Open Question 3):** actual retention
-duration, RPO/RTO targets, and archival strategy. Not a development decision
-— flag to the human, don't default silently.
+### Retention default (healthcare/clinical-adjacent data)
+
+Recorded sessions are clinical/patient-adjacent data, so the retention
+default follows common U.S. healthcare-industry practice rather than an
+arbitrary number — per `ARCHITECTURE.md` → Configuration, this ships as a
+smart default on a bindable `IOptions<T>` class, not a hardcoded constant,
+and an ops/compliance owner can override it per deployment. A few important
+caveats baked into the default:
+
+- **HIPAA itself does not set a patient-record retention period** — it
+  requires covered entities to retain *HIPAA compliance documentation*
+  (policies, authorizations, etc.) for 6 years, but actual clinical/patient
+  record retention is governed by **state law**, licensing boards, or
+  accreditation bodies, and varies by jurisdiction.
+- **Adult records**: 7 years from the date of service (or last treatment) is
+  a common floor across U.S. states — used here as the smart default for
+  adult patient sessions.
+- **Minors**: commonly retained much longer — typically until the patient
+  reaches the age of majority *plus* an additional period (often several
+  years; some states specify explicit longer minimums). This must be a
+  **distinct retention rule from adults**, not a single flat default — model
+  it as a separate, longer default (e.g. age-of-majority + 7 years) rather
+  than trying to force one number to cover both cases.
+- **This default is a starting point, not a compliance sign-off.** The
+  specific applicable state(s), any accreditation-body requirements (e.g.
+  facility/lab accreditation), and the exact minors' figure must be
+  confirmed by a named compliance/legal owner before relying on it in
+  production — flag this explicitly, don't let a smart default quietly
+  become the final answer (design doc §8, Open Question 3 — the default is
+  decided, the sign-off is not).
+
+**Still open (needs sign-off from a compliance/legal owner, tracked in
+`docs/00-design-document.md` §8, Open Question 3):** confirming the exact
+retention figures above (both adult and minor) against the actual
+jurisdiction(s) and accreditation requirements this deployment operates
+under, and RPO/RTO targets for backups. Not a development decision — flag
+to the human, don't treat the smart default as a substitute for that
+confirmation.
 
 ### Development-owned (cannot be transparently externalized)
 

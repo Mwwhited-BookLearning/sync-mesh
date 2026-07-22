@@ -66,6 +66,41 @@ Use NATS as the transport at every tier:
   session sizes/durations are known. Load-test leaf reconnect/resync
   behavior explicitly as part of Phase 3 of the implementation guide.
 
+## Amendment (2026-07-22)
+
+Refinements to the original decision, made during Phase 0 planning — the
+transport choice above stands; these narrow how it's used. Supersedes the
+"capacity-plan the local WorkQueue cap" follow-up below with a concrete
+default instead of an open sizing exercise.
+
+- **Buffer cap has a floor and a configurable ceiling, not one fixed
+  number.** Floor: never discard an event before the nearest server acks
+  it — that's what WorkQueue retention already gives. Ceiling: defaults to
+  unbounded except by available local disk (try to keep everything until
+  the disk actually runs out), configurable down to an explicit
+  `MaxBytes`/`MaxAge`/`MaxMsgs` via `IOptions<T>` (see `ARCHITECTURE.md` →
+  Configuration). When disk is genuinely exhausted, reject new local
+  writes (`Discard: New`) rather than evict unacknowledged data — the only
+  behavior consistent with the floor above.
+- **Sync is one-way**: daemon → server, writes only. The leaf-node
+  connection is never used to push a mirror/replica of server-side data
+  back down to the daemon. Reads the local app needs are served entirely
+  from the daemon's own local store (a "buffered read"), never proxied
+  to/from the server.
+- **Standalone (zero peer connections) is a first-class, permanent
+  topology**, not a bootstrapping step — see design doc §4.4 and Open
+  Question 4. A standalone site's later reconciliation with others, if
+  ever needed, may be an offline/batch mechanism rather than a live
+  gateway connection; that mechanism itself is undesigned and is a
+  separate future decision.
+- **All connections — leaf, gateway, and the Tier X tunnel/relay — use TLS
+  and authenticate with registered service credentials scoped to the
+  daemon/server instance, never end-user identity/permissions.** See
+  design doc §4.4–4.5 and Open Question 5 (the full tunnel security review
+  remains required before production; this is the transport-level
+  baseline it builds on).
+
 ## Related
 
-`docs/00-design-document.md` §4.2–4.4, `docs/adr/0003-hybrid-logical-clock-ordering.md`
+`docs/00-design-document.md` §4.2–4.5, `docs/adr/0003-hybrid-logical-clock-ordering.md`,
+`docs/adr/0004-separate-tunnel-from-event-mesh.md`

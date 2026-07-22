@@ -57,6 +57,7 @@ phase status), see `ARCHITECTURE.md` instead.
 - [ ] Local IPC listener (named pipe / gRPC) accepting events from a stub local-app client
 - [ ] Append-only write path: assign `GlobalEventId` + HLC, persist to local SQLite via EF Core
 - [ ] Optimistic concurrency enforcement via `(StreamId, StreamVersion)` unique index
+- [ ] Buffered read path: local app can read back what it's already recorded this session, served from the daemon's own local store only (never proxied to/from the server — see design doc §4.1/§4.2)
 
 **Exit criteria:**
 - [ ] `local-durability.feature` scenarios pass (local-only, no server tier)
@@ -64,13 +65,13 @@ phase status), see `ARCHITECTURE.md` instead.
 
 ## Phase 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node)
 
-**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Question 1 — buffer cap sizing; Open Question 2 — leaf reconnect-sync risk)
+**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Question 2 — leaf reconnect-sync risk; Open Question 1 resolved)
 
 **Entry criteria:** Phase 1 complete.
 
-- [ ] Local nats-server instance (or embedded equivalent) configured as a leaf node
-- [ ] Local JetStream stream, WorkQueue retention, configurable `MaxAge`/`MaxMsgs` cap
-- [ ] Publish-on-write from daemon's event writer to local JetStream stream
+- [ ] Local nats-server instance (or embedded equivalent) configured as a leaf node, TLS-secured, authenticating with a registered service credential (not end-user identity)
+- [ ] Local JetStream stream, WorkQueue retention: default ceiling unbounded except by local disk (`Discard: New` on exhaustion), configurable to a smaller `MaxBytes`/`MaxAge`/`MaxMsgs` via `IOptions<T>`
+- [ ] Publish-on-write from daemon's event writer to local JetStream stream — one-way (daemon → server); no subscription/mirroring of server-side data back down to the daemon
 - [ ] Minimal server-side subscriber: ack + write to server-tier `EventStoreDbContext`
 - [ ] Idempotent apply (dedupe by `GlobalEventId`) on the server side
 - [ ] NATS added to `SyncMesh.AppHost` topology (leaf node ↔ nearest-server cluster)
@@ -82,13 +83,16 @@ phase status), see `ARCHITECTURE.md` instead.
 
 ## Phase 3 — Server Mesh Reconciliation (Gateways/Supercluster)
 
-**Related docs**: [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md) (`HlcGenerator.Merge`), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md)
+**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md) (`HlcGenerator.Merge`), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md)
 
 **Entry criteria:** Phase 2 complete, at least two server-tier instances available for testing.
 
-- [ ] NATS gateway connections between two+ server-tier nodes — validate standalone (single server) and hub-and-spoke first; full mesh must remain supported by the topology/config, not architecturally precluded
+Note: a standalone (zero-peer) server is a fully valid, permanent deployment on its own — this phase is about *multi-site* deployments specifically, not something every deployment must eventually adopt.
+
+- [ ] NATS gateway connections between two+ server-tier nodes, TLS-secured with registered service credentials — validate hub-and-spoke first; full mesh must remain supported by the topology/config, not architecturally precluded
 - [ ] Server-side apply logic merges incoming HLC values
 - [ ] Replay/read-model query orders by `(HlcPhysicalTicks, HlcLogicalCounter)`, not insertion/arrival order
+- [ ] (Future, undesigned) offline/batch reconciliation mechanism for a standalone site that later needs to sync out-of-band — tracked as a distinct decision, not assumed to be "just NATS gateways later"
 
 **Exit criteria:**
 - [ ] `event-ordering-and-idempotency.feature` fully passes, including out-of-order arrival and partition/reconnect scenarios
@@ -108,11 +112,11 @@ phase status), see `ARCHITECTURE.md` instead.
 
 ## Phase 5 — Interactive Tunnel + Relay Fallback
 
-**Related docs**: [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — tunnel relay security model)
+**Related docs**: [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md) (see Amendment), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security baseline decided, full review still required)
 
-**Entry criteria:** Phase 2 complete. Security review (Open Question 5) must be scheduled/completed before production use, even if a prototype is built earlier.
+**Entry criteria:** Phase 2 complete. Full security review (Open Question 5) must be scheduled/completed before production use, even if a prototype is built earlier — the TLS + service-credential baseline below isn't a substitute for that review.
 
-- [ ] Tunnel/relay tooling integrated as a mechanism separate from the NATS event mesh
+- [ ] Tunnel/relay tooling integrated as a mechanism separate from the NATS event mesh, TLS-secured, authenticating with a registered service credential (not end-user permissions) — remote-user authorization for what they can view/control is a separate layer on top
 - [ ] Direct-connection-first, relay-fallback logic on the client side
 - [ ] Explicit chaos-style tests: kill tunnel path, confirm event-sync unaffected, and vice versa
 
@@ -157,8 +161,14 @@ product/ops decision, don't resolve it here.
         [`docs/07-operations-guide.md`](docs/07-operations-guide.md):
         backup/restore mechanics are ops-owned; only purge-safety
         (idempotent-apply/replay-ordering) is dev-owned.
-  - [ ] Retention duration and RPO/RTO targets — still an open ops/business
-        decision.
+  - [x] Smart default established (healthcare/clinical-adjacent data): 7
+        years for adult records, a longer distinct default for minors (age
+        of majority + additional years) — see
+        [`docs/07-operations-guide.md`](docs/07-operations-guide.md) →
+        "Retention default". `IOptions<T>`-bound per `ARCHITECTURE.md`.
+  - [ ] Compliance/legal sign-off on the exact figures for the actual
+        jurisdiction(s)/accreditation this deployment operates under, plus
+        RPO/RTO targets — still open; the smart default isn't that sign-off.
 - **4. Full-mesh vs. hub-and-spoke topology at scale** (Phase 6).
   - [x] Policy decided — full mesh must remain a supported gateway topology
         (not architecturally precluded); standalone (single server) and
