@@ -10,6 +10,28 @@ original docs) so they stay consistent across phases instead of being
 re-decided ad hoc each time. Update it as new patterns get established —
 don't let it go stale.
 
+## Tier 0 IPC (Local App ↔ Local Daemon)
+
+- **Transport**: plain named pipes via `System.IO.Pipes`
+  (`NamedPipeServerStream`/`NamedPipeClientStream`), not gRPC. Both are
+  explicitly allowed per `docs/00-design-document.md` §4.1, and named pipes
+  are simpler here: no Kestrel/ASP.NET Core hosting, no protobuf toolchain,
+  and `System.IO.Pipes` already works cross-platform (Unix-domain-socket-
+  backed on Linux/macOS) without OS-conditional code. Revisit if Phase 1's
+  needs outgrow a simple request/response protocol (e.g. server-push
+  streaming to the local app) — gRPC over a named pipe/UDS Kestrel
+  transport remains the natural upgrade path.
+- **Wire protocol**: a 4-byte length prefix + UTF-8 JSON, one request/
+  response per connection (`SyncMesh.Daemon.Ipc.IpcFraming`). No
+  request multiplexing over a single connection — simplicity over
+  throughput, appropriate for a local, single-digit-events-per-second IPC
+  hop.
+- **Request handling**: each connection gets its own DI scope
+  (`IServiceScopeFactory.CreateScope()`), so `EventStoreDbContext` (scoped)
+  is never shared across concurrent requests, while `HlcGenerator` stays a
+  singleton (its counter must be monotonic across everything this daemon
+  process produces).
+
 ## Configuration
 
 Every tunable (buffer caps, timeouts, retention, reconnect/backoff, subject
@@ -142,6 +164,16 @@ ambiguous which phase actually gates it.
   must be `true`, or Reqnroll writes generated `.feature.cs` code-behind
   next to the linked source — i.e. into `docs/bdd/features/` — polluting a
   documentation directory with generated code.
+- **A scenario's `Background` gates every scenario in that feature file.**
+  If the `Background` asserts infrastructure that doesn't exist yet in the
+  current phase (e.g. `local-durability.feature`'s Background asserts "an
+  embedded NATS leaf node" and JetStream WorkQueue retention, both Phase 2),
+  don't bind those steps early just to turn the suite green — that means
+  asserting something false. Leave the whole file pending until its
+  Background is literally true, and prove the underlying property (e.g.
+  durable local storage surviving a restart) via an ordinary unit/
+  integration test in the meantime. `WORKPLAN.md` notes which feature files
+  are deferred this way and why, per phase.
 - **Multi-provider EF Core migrations**: EF Core does not support multiple
   providers' migrations living in one assembly — at runtime it applies
   every `Migration` subclass found in the configured migrations assembly,

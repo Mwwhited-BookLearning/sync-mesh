@@ -12,6 +12,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SyncMesh.Bdd.Tests/SyncMesh.Bdd.Tests.csproj" />
+    <Project Path="tests/SyncMesh.Daemon.Tests/SyncMesh.Daemon.Tests.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.Postgres/SyncMesh.EventStore.Tests.Postgres.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.Sqlite/SyncMesh.EventStore.Tests.Sqlite.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.SqlServer/SyncMesh.EventStore.Tests.SqlServer.csproj" />

@@ -25,6 +25,12 @@
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SyncMesh.Contracts\SyncMesh.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\SyncMesh.EventStore\SyncMesh.EventStore.csproj" />
+    <ProjectReference Include="..\..\src\SyncMesh.EventStore.Migrations.Sqlite\SyncMesh.EventStore.Migrations.Sqlite.csproj" />
+  </ItemGroup>
+
   <!--
     Feature files stay in docs/bdd/features/ as the single source of truth
     (per CLAUDE.md) — linked here rather than duplicated so Reqnroll can
