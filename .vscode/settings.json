@@ -1,0 +1,10 @@
+{
+  "cucumberautocomplete.steps": [
+    "tests/SyncMesh.Bdd.Tests/StepDefinitions/**/*.cs"
+  ],
+  "cucumberautocomplete.syncfeatures": "docs/bdd/features/**/*.feature",
+  "cucumberautocomplete.strictGherkinCompletion": true,
+  "cucumberautocomplete.strictGherkinValidation": true,
+  "cucumberautocomplete.smartSnippets": true,
+  "cucumberautocomplete.stepsInvariants": true
+}

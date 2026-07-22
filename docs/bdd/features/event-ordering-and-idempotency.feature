@@ -1,3 +1,6 @@
+# Use case: docs/09-use-cases.md#uc3--reconcile-event-history-across-sites
+# Diagrams: docs/sequence-diagrams.md > "Server Mesh Reconciliation — HLC-Ordered, Idempotent Apply"
+#           docs/08-deployment-models.md > #5 Intra-site mesh + limited gateway, #6 Full mesh everywhere
 Feature: Cross-site event ordering and idempotent apply
   As the server mesh
   I want to apply events idempotently and reconstruct correct ordering using hybrid logical clocks

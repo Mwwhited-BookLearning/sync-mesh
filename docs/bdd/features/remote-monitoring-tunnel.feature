@@ -1,3 +1,6 @@
+# Use cases: docs/09-use-cases.md#uc4--monitor-recording-remotely
+#            docs/09-use-cases.md#uc5--tunnel-into-recording-instance-interactively
+# Diagrams: docs/sequence-diagrams.md > "Remote Monitoring / Tunnel — Direct-First, Relay Fallback"
 Feature: Remote monitoring and tunnel fallback via nearest server
   As a remote monitoring user
   I want to observe or interactively access a recording instance directly when possible
@@ -18,6 +21,12 @@ Feature: Remote monitoring and tunnel fallback via nearest server
     Then the client attempts direct connection first
     And upon failure, falls back to relaying through the nearest server
     And the session is established via the relay
+
+  Scenario: Tunnel and monitoring connections authenticate as a service, not as the end user
+    Given the daemon and the nearest server both have a registered service credential
+    When a direct or relayed tunnel/monitoring connection is established
+    Then the connection is TLS-secured and authenticated using the registered service credential
+    And the remote user's own authorization for what they can view or control is enforced as a separate layer on top of that connection
 
   Scenario: Passive monitoring works regardless of tunnel path availability
     Given the interactive tunnel path is currently blocked and no relay session is active

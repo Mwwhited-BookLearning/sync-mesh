@@ -64,6 +64,27 @@ phase status), see `ARCHITECTURE.md` instead.
 - [x] `event-ordering-and-idempotency.feature`: the two scenarios genuinely testable without network — "Clock merge preserves causal ordering" and "Events from two sites are ordered correctly on replay" — pass. The other three (duplicate-delivery/idempotent-apply, partition reconciliation, leaf reconnect) remain correctly pending — they're Phase 2/3 scope (server-side apply, multi-server mesh, leaf node).
 - [~] `local-durability.feature`: **deliberately left pending, not step-defined this phase.** Its `Background` asserts "a local daemon is running with an embedded NATS leaf node" and "the daemon's local JetStream stream uses WorkQueue retention" — neither exists until Phase 2. Binding those steps now would mean asserting NATS/JetStream behavior that isn't there, which is worse than leaving them honestly pending. The underlying property this feature is really after — durable local storage that survives a daemon restart — **is proven**, just via `SyncMesh.Daemon.Tests` instead of this Gherkin file (see `WrittenEvent_SurvivesAFreshDbContext_SimulatingADaemonRestart`). Revisit this feature file in Phase 2 once the Background is literally true.
 
+**Feature files reconciled against everything discussed since they were first
+written** (buffer floor/ceiling + disk-bound default, buffered local read,
+client-isolated/no-nearest-server, standalone server, two-level topology +
+full-mesh-to-cloud, TLS + service-credential baseline):
+- `local-durability.feature`: split the old single capacity-cap scenario
+  into "defaults to disk-bound" + "respects an explicit smaller cap"
+  (reject-new-writes, not evict); added scenarios for buffered local read
+  and for a daemon with no nearest server configured at all (permanent,
+  not just an outage).
+- `nearest-neighbor-sync.feature`: added scenarios for cloud-only (no
+  on-prem tier), a standalone zero-peer server, intra-site full mesh with
+  a limited inter-site gateway, and full mesh extending directly to cloud;
+  the existing multi-site reconciliation scenario now states the two-way
+  direction explicitly (A applies B's events *and* B applies A's).
+- `remote-monitoring-tunnel.feature`: added a scenario for the TLS +
+  registered-service-credential baseline, with remote-user authorization
+  as an explicit separate layer on top.
+- `event-ordering-and-idempotency.feature`: **left untouched** — nothing
+  discussed changes its content, and two of its scenarios already have
+  passing step bindings from this phase that textual changes would break.
+
 ## Phase 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node)
 
 **Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Question 2 — leaf reconnect-sync risk; Open Question 1 resolved)
