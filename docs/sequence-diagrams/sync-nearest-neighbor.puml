@@ -1,0 +1,41 @@
+@startuml sync-nearest-neighbor
+title Server Mesh Reconciliation — HLC-Ordered, Idempotent Apply
+
+participant "Server A\n(received event locally)" as A
+participant "NATS Gateway /\nSupercluster" as Gateway
+participant "Server B" as B
+database "Server B\nEvent Store" as BDb
+participant "Server C" as C
+database "Server C\nEvent Store" as CDb
+
+A -> Gateway: Publish event (events.<originSiteId>.<streamId>)
+Gateway -> B: Deliver (interest-based routing)
+Gateway -> C: Deliver (interest-based routing)
+
+group Server B apply
+    B -> BDb: Exists GlobalEventId? 
+    alt Not yet applied
+        B -> BDb: Insert event
+        B -> B: Merge HLC (received, local)
+    else Already applied
+        B -> B: No-op (idempotent — at-least-once delivery expected)
+    end
+end
+
+group Server C apply
+    C -> CDb: Exists GlobalEventId?
+    alt Not yet applied
+        C -> CDb: Insert event
+        C -> C: Merge HLC (received, local)
+    else Already applied
+        C -> C: No-op
+    end
+end
+
+note over A, C
+  Ordering is reconstructed at replay time using
+  (HlcPhysicalTicks, HlcLogicalCounter) — never assumed
+  from delivery order across the gateway/supercluster.
+end note
+
+@enduml
