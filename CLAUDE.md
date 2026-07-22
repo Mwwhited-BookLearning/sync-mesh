@@ -1,7 +1,10 @@
 # CLAUDE.md — Project Guide for Claude Code
 
 This file is the entry point for Claude Code when working in this repository.
-Read this first, then `docs/00-design-document.md` for full context.
+Read this first, then `docs/00-design-document.md` for full context. Before
+starting new work, also check `WORKPLAN.md` (current phase status) and
+`ARCHITECTURE.md` (engineering conventions already established) so you don't
+re-decide something that's already settled.
 
 ## What this project is
 
@@ -23,9 +26,10 @@ tradeoff explicitly to the human first.
 
 ## Tech stack conventions
 
-- **Language**: C#, .NET (mix of .NET Core / modern .NET and .NET Framework
-  4.8 where legacy interop is required — check the component's ADR before
-  assuming which one).
+- **Language**: C#, modern .NET only (`net10.0` — see `ARCHITECTURE.md`).
+  No .NET Framework 4.8 components: that contingency was only for WCF/legacy
+  interop, which is out of scope for this project (see below and design doc
+  §8, Open Question 6, resolved).
 - **Persistence**: Entity Framework Core. SQLite at the edge/daemon tier,
   PostgreSQL or SQL Server at the server tier. Schema must remain portable
   across all three providers — avoid provider-specific SQL in migrations
@@ -35,9 +39,11 @@ tradeoff explicitly to the human first.
   servers. See `docs/adr/0002-nats-leaf-nodes-for-transport.md`.
 - **Ordering**: Hybrid Logical Clocks (HLC), not transport-level ordering.
   See `docs/adr/0003-hybrid-logical-clock-ordering.md`.
-- **Legacy interop**: WCF services may sit at integration boundaries with
-  older on-prem systems — isolate behind an anti-corruption layer, do not
-  let WCF contracts leak into the core event model.
+- **Legacy interop**: out of scope for this project. If some future
+  external component needs WCF integration with an older on-prem system,
+  that integration is implemented within that component — isolated behind
+  an anti-corruption layer — not built into sync-mesh. WCF contracts must
+  never leak into this project's core event model.
 - **Diagrams**: PlantUML, embedded as fenced ` ```plantuml ` blocks directly
   in Markdown (not standalone `.puml` files). C4 model for architecture
   diagrams (`docs/c4-diagrams.md`), Salt for UI wireframes if/when UI work
@@ -47,7 +53,37 @@ tradeoff explicitly to the human first.
   don't just implement and retrofit a feature file afterward.
 - **Docs**: Markdown throughout. Keep design docs and code in sync; if an
   implementation detail changes an ADR's assumption, update the ADR (append,
-  don't silently rewrite history — mark superseded ADRs as such).
+  don't silently rewrite history — mark superseded ADRs as such). Doc set:
+  `docs/00-design-document.md` (architecture/goals/open questions) →
+  `docs/05-implementation-guide.md` (static phased plan) →
+  `docs/06-data-model.md` (envelope/entity/HLC shapes) →
+  `docs/07-operations-guide.md` (ops-owned vs. dev-owned operational
+  concerns, e.g. backup/retention) → `docs/adr/` (individual decisions) →
+  `docs/bdd/features/` (executable acceptance criteria). `WORKPLAN.md`
+  tracks phase status against the implementation guide; `ARCHITECTURE.md`
+  tracks engineering conventions established along the way.
+- **Operational vs. development ownership**: when a concern (backup
+  schedules, retention windows, infra sizing, etc.) can be fully handled by
+  standard external/transparent tooling, document the suggested pattern in
+  `docs/07-operations-guide.md` rather than building it into the
+  application. Only pull something into development/design scope when it
+  genuinely can't be externally isolated — e.g. the app's own correctness
+  guarantees (idempotent apply, replay ordering) depend on it.
+- **Configuration**: any tunable value (buffer caps, timeouts, retention,
+  reconnect/backoff settings, subject prefixes, etc.) must be configurable
+  via the `Microsoft.Extensions.Options` pattern — bind a POCO options class
+  from configuration and consume it as `IOptions<T>` /
+  `IOptionsMonitor<T>` (the latter where a value may need to change without a
+  restart), never read raw config values inline via `IConfiguration["..."]`
+  scattered through application code. Every options class must have smart
+  defaults set on its properties so the app runs sensibly out of the box with
+  zero configuration — configuration overrides the default, it isn't
+  required to supply one. Register with
+  `services.AddOptions<T>().Bind(...).ValidateDataAnnotations()` (or a custom
+  `IValidateOptions<T>`) so invalid configuration fails fast at startup, not
+  deep in a code path. This applies solution-wide, not just to the daemon's
+  buffer cap (Open Question 1 in the design doc) — see `WORKPLAN.md` for
+  which specific values are still open questions vs. already defaulted.
 
 ## How to work in this repo
 
@@ -68,10 +104,14 @@ tradeoff explicitly to the human first.
 6. Keep the monitoring/tunnel path and the event-sync path architecturally
    separate (different subjects/services, different failure domains) even
    though both may relay through the same nearest server.
-7. Keep `WORKPLAN.md` current as work progresses — phase status, what's
-   in-flight, and any decisions/deviations made along the way (framework
-   choices, workarounds, things that didn't match the original docs). It's
-   the living companion to the static plan in the implementation guide.
+7. Keep `WORKPLAN.md` and `ARCHITECTURE.md` current as work progresses.
+   `WORKPLAN.md` tracks phase *status* — what's done, in-flight, next —
+   against the static plan in the implementation guide. `ARCHITECTURE.md`
+   tracks engineering *conventions* adopted along the way (framework
+   choices, workarounds, things that didn't match the original docs) so
+   they stay consistent across phases instead of being re-decided each
+   time. Status goes in the former, durable patterns in the latter — don't
+   mix the two.
 
 ## Open questions to flag to the human, not silently resolve
 

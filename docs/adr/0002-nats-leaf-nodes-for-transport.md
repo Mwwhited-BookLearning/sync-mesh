@@ -55,8 +55,13 @@ Use NATS as the transport at every tier:
   integration-tested against our actual outage patterns before being
   trusted for correctness-critical sync (see Open Question in design doc).
   Full mesh gateway topology also gets operationally harder as site count
-  and instability grow; plan for hub-and-spoke rather than full mesh by
-  default.
+  and instability grow; plan for hub-and-spoke as the default starting
+  shape. Full mesh is not precluded — NATS gateways support it natively as
+  a topology/config choice, not a code branch — it's simply not the
+  validated default until real node count/instability characteristics are
+  known. Minimum-scale deployments (a standalone single server, or
+  hub-and-spoke) are what's exercised first; see Open Question 4 in the
+  design doc.
 - Follow-up: capacity-plan the local WorkQueue cap once real recording
   session sizes/durations are known. Load-test leaf reconnect/resync
   behavior explicitly as part of Phase 3 of the implementation guide.

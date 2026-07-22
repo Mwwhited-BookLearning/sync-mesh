@@ -148,9 +148,8 @@ production-ready, even if a prototype is built earlier.
 - Load/chaos test leaf-node reconnect behavior under realistic outage
   durations and event volumes (Open Question 2), not just the Phase 2
   smoke test.
-- Confirm WCF/legacy interop scope, if any, and ensure it is isolated
-  behind an anti-corruption layer rather than integrated directly (Open
-  Question 6).
+- ~~Confirm WCF/legacy interop scope~~ — resolved (Open Question 6): out of
+  scope for this project. No Phase 6 work item here.
 
 **Exit criteria:**
 - All Open Questions in `docs/00-design-document.md` §8 are either

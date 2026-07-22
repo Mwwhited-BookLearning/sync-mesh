@@ -2,24 +2,30 @@
 
 Living tracker for implementation progress against `docs/05-implementation-guide.md`.
 That document is the authoritative phase definition (entry/exit criteria, BDD
-features per phase) — this file tracks *status* and *decisions made along the
-way*. Update it as work progresses; do not let it drift from reality.
+features per phase) — this file tracks *status*: what's done, what's
+in-flight, what's next. Update it as work progresses; do not let it drift
+from reality.
+
+For engineering patterns/practices/conventions adopted along the way (not
+phase status), see `ARCHITECTURE.md` instead.
 
 ## Status at a glance
 
-| Phase | Status | Notes |
+| Phase | Status | Related docs |
 |---|---|---|
-| 0 — Project Setup | ✅ Done | See checklist below |
-| 1 — Local Event Store (Daemon Side) | ⬜ Not started | |
-| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ⬜ Not started | |
-| 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ⬜ Not started | |
-| 4 — Passive Monitoring | ⬜ Not started | |
-| 5 — Interactive Tunnel + Relay Fallback | ⬜ Not started | Needs security review scheduled (Open Question 5) |
-| 6 — Hardening & Operational Readiness | ⬜ Not started | |
+| 0 — Project Setup | ✅ Done | [Data model](docs/06-data-model.md), [ADR-0001](docs/adr/0001-event-store-on-ef-core.md) |
+| 1 — Local Event Store (Daemon Side) | ⬜ Not started | [Data model](docs/06-data-model.md), [local-durability.feature](docs/bdd/features/local-durability.feature), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [Event Recording Flow](docs/sequence-diagrams.md) |
+| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ⬜ Not started | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Questions 1 & 2) |
+| 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ⬜ Not started | [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md) |
+| 4 — Passive Monitoring | ⬜ Not started | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature) |
+| 5 — Interactive Tunnel + Relay Fallback | ⬜ Not started | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security review) |
+| 6 — Hardening & Operational Readiness | ⬜ Not started | [Design doc §8](docs/00-design-document.md) (all Open Questions), `docs/adr/` (re-review as needed) |
 
 ---
 
 ## Phase 0 — Project Setup
+
+**Related docs**: [Data model](docs/06-data-model.md) (`EventStoreDbContext` shape), [ADR-0001](docs/adr/0001-event-store-on-ef-core.md) (EF Core on SQLite/PostgreSQL/SQL Server)
 
 - [x] Solution scaffolded (`SyncMesh.slnx`) with `src/` and `tests/` projects
 - [x] `SyncMesh.Contracts` — shared envelope/DTO project shell (content deferred to Phase 1)
@@ -41,62 +47,127 @@ way*. Update it as work progresses; do not let it drift from reality.
 - [x] `EventStoreDbContext` migrates against all three providers in isolated test projects
 - [x] Local script runs unit tests + BDD scenarios (BDD scenarios are pending/skipped — expected, no step definitions exist yet)
 
-## Decisions & deviations (Phase 0)
+## Phase 1 — Local Event Store (Daemon Side)
 
-- **Target framework**: `net10.0` (current LTS, matches installed SDK 10.0.301).
-- **Solution format**: `.sln` requests now produce `.slnx` by default under the
-  .NET 10 SDK — used as-is rather than forcing the legacy format.
-- **NATS client**: not yet added — deferred to Phase 2, where it's first used.
-- **BDD test framework**: Reqnroll + **MSTest** (not xUnit). xUnit has no
-  pending/inconclusive concept, so undefined steps report as **Failed**,
-  which would make `dotnet test` red through every phase until BDD scenarios
-  are fully step-defined. MSTest reports undefined steps as **Skipped**,
-  keeping the suite green. The `EventStore.Tests.*` provider projects remain
-  on xUnit (plain unit tests, no pending-step concern there).
-- **Multi-provider EF Core migrations**: EF Core does not support multiple
-  providers' migrations living in one assembly (it applies every `Migration`
-  subclass it finds, regardless of active provider). Solved by giving each
-  provider its own migrations project/assembly
-  (`SyncMesh.EventStore.Migrations.{Sqlite,Postgres,SqlServer}`), each with
-  its own `IDesignTimeDbContextFactory`.
-- **Local dev orchestration**: Microsoft Aspire (AppHost + ServiceDefaults),
-  per explicit request. Only Postgres is orchestrated as a container
-  (ServerHost's default provider) — SQL Server is supported by ServerHost via
-  config but not stood up in the AppHost topology, to keep local dev to one
-  instance. NATS will be added to the AppHost topology when Phase 2 wires up
-  the leaf node.
-- **Known environment limitation**: in this sandboxed dev environment,
-  Aspire's DCP orchestrator successfully starts project resources (Daemon,
-  ServerHost ran fine) but got stuck leaving the Postgres **container**
-  resource in `created` state without issuing `docker start` — confirmed by
-  manually running `docker start` on the same container, which worked
-  instantly. Testcontainers (used by the provider migration tests) is
-  unaffected since it talks to Docker directly, not through DCP. This looks
-  like a DCP/Docker interaction quirk specific to this sandbox — worth
-  re-verifying `dotnet run --project src/SyncMesh.AppHost` in a normal
-  terminal or Visual Studio.
-- **`dotnet-ef` tool**: installed as a local tool via
-  `.config/dotnet-tools.json` (repo-scoped), not global — run `dotnet tool
-  restore` after cloning.
-- **Diagrams**: PlantUML embedded as fenced code blocks in
-  `docs/c4-diagrams.md` / `docs/sequence-diagrams.md`, not standalone `.puml`
-  files (per explicit request) — the old `docs/c4-diagrams/` and
-  `docs/sequence-diagrams/` folders were removed.
-- **Vulnerability pin**: `SQLitePCLRaw.bundle_e_sqlite3` pinned to `2.1.12`
-  in every project that pulls in the SQLite EF Core provider (directly or
-  transitively), overriding a transitively-referenced `2.1.11` with a known
-  high-severity advisory (GHSA-2m69-gcr7-jv3q).
+**Related docs**: [Data model](docs/06-data-model.md) (`EventEnvelope`, `EventRecord`, `HlcGenerator`, idempotent apply shape), [local-durability.feature](docs/bdd/features/local-durability.feature), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [Event Recording Flow diagram](docs/sequence-diagrams.md)
 
-## Open questions carried from the design doc (not resolved here)
+**Entry criteria:** Phase 0 complete. ✅
 
-See `docs/00-design-document.md` §8 for full detail — flagged, not silently
-decided, per CLAUDE.md:
+- [ ] Implement `EventEnvelope`, `EventRecord`, `HlcGenerator` in `SyncMesh.Contracts`
+- [ ] Local IPC listener (named pipe / gRPC) accepting events from a stub local-app client
+- [ ] Append-only write path: assign `GlobalEventId` + HLC, persist to local SQLite via EF Core
+- [ ] Optimistic concurrency enforcement via `(StreamId, StreamVersion)` unique index
 
-1. Buffer cap sizing at the daemon (Phase 6)
-2. Leaf node reconnect-sync reliability (Phase 2 exit criteria requires an
-   explicit test; Phase 6 requires load/chaos testing)
-3. Server-tier retention/backup policy (Phase 6)
-4. Full-mesh vs. hub-and-spoke topology at scale (Phase 6)
-5. Tunnel relay security model — needs dedicated security review before
-   Phase 5 is production-ready
-6. WCF/legacy interop boundary scope (Phase 6)
+**Exit criteria:**
+- [ ] `local-durability.feature` scenarios pass (local-only, no server tier)
+- [ ] `event-ordering-and-idempotency.feature` HLC generation/merge scenarios pass in isolation (no network)
+
+## Phase 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node)
+
+**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Question 1 — buffer cap sizing; Open Question 2 — leaf reconnect-sync risk)
+
+**Entry criteria:** Phase 1 complete.
+
+- [ ] Local nats-server instance (or embedded equivalent) configured as a leaf node
+- [ ] Local JetStream stream, WorkQueue retention, configurable `MaxAge`/`MaxMsgs` cap
+- [ ] Publish-on-write from daemon's event writer to local JetStream stream
+- [ ] Minimal server-side subscriber: ack + write to server-tier `EventStoreDbContext`
+- [ ] Idempotent apply (dedupe by `GlobalEventId`) on the server side
+- [ ] NATS added to `SyncMesh.AppHost` topology (leaf node ↔ nearest-server cluster)
+
+**Exit criteria:**
+- [ ] `local-durability.feature` fully passes, including buffer removal after ack and cap-overflow behavior
+- [ ] `nearest-neighbor-sync.feature` on-prem connection + config-swap scenarios pass
+- [ ] Explicit extended-disconnect/reconnect test exists and passes, or the leaf-node reconnect-sync risk is documented as an accepted limitation with a mitigation plan
+
+## Phase 3 — Server Mesh Reconciliation (Gateways/Supercluster)
+
+**Related docs**: [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md) (`HlcGenerator.Merge`), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md)
+
+**Entry criteria:** Phase 2 complete, at least two server-tier instances available for testing.
+
+- [ ] NATS gateway connections between two+ server-tier nodes — validate standalone (single server) and hub-and-spoke first; full mesh must remain supported by the topology/config, not architecturally precluded
+- [ ] Server-side apply logic merges incoming HLC values
+- [ ] Replay/read-model query orders by `(HlcPhysicalTicks, HlcLogicalCounter)`, not insertion/arrival order
+
+**Exit criteria:**
+- [ ] `event-ordering-and-idempotency.feature` fully passes, including out-of-order arrival and partition/reconnect scenarios
+- [ ] `nearest-neighbor-sync.feature` server-mesh reconciliation scenario passes across two+ nodes
+
+## Phase 4 — Passive Monitoring
+
+**Related docs**: [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature)
+
+**Entry criteria:** Phase 2 complete (does not require Phase 3).
+
+- [ ] Daemon telemetry/status published to `monitor.<siteId>.<instanceId>.*`
+- [ ] Minimal remote client/CLI subscribing to monitor subjects for a given site/instance
+
+**Exit criteria:**
+- [ ] `remote-monitoring-tunnel.feature` passive-monitoring scenario passes
+
+## Phase 5 — Interactive Tunnel + Relay Fallback
+
+**Related docs**: [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — tunnel relay security model)
+
+**Entry criteria:** Phase 2 complete. Security review (Open Question 5) must be scheduled/completed before production use, even if a prototype is built earlier.
+
+- [ ] Tunnel/relay tooling integrated as a mechanism separate from the NATS event mesh
+- [ ] Direct-connection-first, relay-fallback logic on the client side
+- [ ] Explicit chaos-style tests: kill tunnel path, confirm event-sync unaffected, and vice versa
+
+**Exit criteria:**
+- [ ] `remote-monitoring-tunnel.feature` fully passes, including both cross-failure-isolation scenarios
+- [ ] Security review sign-off obtained, or explicitly deferred with risk accepted by a named owner
+
+## Phase 6 — Hardening & Operational Readiness
+
+**Related docs**: [Design doc §8](docs/00-design-document.md) (all Open Questions), `docs/adr/` (re-review as needed)
+
+**Entry criteria:** Phases 1–5 functionally complete.
+
+- [ ] Buffer cap sizing finalized (Open Question 1)
+- [ ] Server-tier retention/backup policy defined (Open Question 3 — see
+      `docs/07-operations-guide.md` for the ops-owned/dev-owned split)
+- [ ] Full mesh validated/decided default-vs-opt-in given actual site count and instability characteristics (Open Question 4) — standalone and hub-and-spoke already work by this point
+- [ ] Load/chaos test leaf-node reconnect behavior under realistic outage durations/volumes (Open Question 2)
+- [x] ~~WCF/legacy interop scope~~ (Open Question 6) — resolved: out of scope for this project
+
+**Exit criteria:**
+- [ ] All Open Questions in `docs/00-design-document.md` §8 are resolved and documented, or explicitly accepted as ongoing risks with a named owner and review date
+
+---
+
+## Open questions carried from the design doc
+
+Mirrors `docs/00-design-document.md` §8 — flagged, not silently decided, per
+`CLAUDE.md`. Checked = actually decided; unchecked = still needs a
+product/ops decision, don't resolve it here.
+
+- [ ] **1. Buffer cap sizing at the daemon** (Phase 6). Will ship as an
+      `IOptions<T>` class (e.g. `DaemonBufferOptions` with
+      `MaxAge`/`MaxMsgs`) per `ARCHITECTURE.md` → Configuration; default
+      value still needs a decision once expected outage duration is known.
+- [ ] **2. Leaf node reconnect-sync reliability** (Phase 2 exit criteria
+      requires an explicit test; Phase 6 requires load/chaos testing).
+      Reconnect/backoff settings will also be `IOptions<T>`-bound with a
+      smart default.
+- **3. Server-tier retention/backup policy** (Phase 6).
+  - [x] Ownership split decided — see
+        [`docs/07-operations-guide.md`](docs/07-operations-guide.md):
+        backup/restore mechanics are ops-owned; only purge-safety
+        (idempotent-apply/replay-ordering) is dev-owned.
+  - [ ] Retention duration and RPO/RTO targets — still an open ops/business
+        decision.
+- **4. Full-mesh vs. hub-and-spoke topology at scale** (Phase 6).
+  - [x] Policy decided — full mesh must remain a supported gateway topology
+        (not architecturally precluded); standalone (single server) and
+        hub-and-spoke are the minimum-scale configurations validated first.
+  - [ ] Which topology to actually default to at real scale — still open,
+        revisit once node count/instability characteristics are known.
+- [ ] **5. Tunnel relay security model** — needs dedicated security review
+      before Phase 5 is production-ready.
+- [x] **6. WCF/legacy interop boundary scope** — resolved: out of scope for
+      this project. Any future external component needing WCF integration
+      implements it within that component (anti-corruption layer), not in
+      sync-mesh.

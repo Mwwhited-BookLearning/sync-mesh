@@ -103,8 +103,14 @@ flows (PlantUML source embedded inline in each Markdown file).
 - Servers connect to each other via NATS gateway connections (supercluster)
   for peer-to-peer, and/or peer-to-cloud where a cloud region acts as a
   hub.
-- Prefer a hub-and-spoke shape over full mesh as node count grows — full
-  mesh gets operationally harder as instability increases (see ADR-0002).
+- Full mesh must remain a supported gateway topology — nothing in the
+  design should architecturally foreclose it. At minimum scale, the system
+  must work correctly as either a **standalone** single server (no peers at
+  all) or a **hub-and-spoke** topology; full mesh is the thing to validate
+  once real node count/instability characteristics are known (see ADR-0002
+  and Open Question 4). Topology is a gateway/config concern, not a code
+  branch — the reconciliation logic (HLC ordering, idempotent apply) must
+  not assume any particular shape.
 - Ordering is **not** guaranteed by the transport across sites. Every event
   carries a Hybrid Logical Clock (HLC) + origin site ID. The authoritative
   order is reconstructed at replay time, not assumed from arrival order.
@@ -166,25 +172,44 @@ Every event carries, at minimum:
 ## 8. Open Questions & Risks
 
 These require a product or operational decision, not just an engineering
-one — flag back to the human rather than resolving silently:
+one — flag back to the human rather than resolving silently. Checked boxes
+mark what has actually been decided; unchecked items (or unchecked
+sub-items) are still open and should not be resolved without asking.
 
-1. **Buffer cap sizing at the daemon.** What's the worst-case expected
-   outage duration for a recording session, and what event volume/size
-   should the local WorkQueue cap be sized against?
-2. **Leaf node reconnect-sync reliability.** There are known reports of
-   gaps in leaf-node mirror sync after extended disconnection. This needs
-   explicit integration testing against your actual outage patterns before
-   being trusted for correctness-critical data — do not assume it "just
-   works" from documentation alone.
-3. **Server-tier retention/backup policy.** Not defined yet — standard
-   database backup practices apply, but retention duration and archival
-   strategy need a decision.
-4. **Full-mesh vs hub-and-spoke topology at scale.** Fine to start simple;
-   revisit once the number of server-tier sites is known.
-5. **Tunnel relay security model.** Relaying an interactive session through
-   the nearest server has real security implications (attack surface,
-   auth, session hijacking risk) that need a dedicated security review
-   before implementation — this doc only covers the architectural shape.
-6. **WCF/legacy interop boundary.** If any on-prem system requires WCF
-   integration, confirm scope early so it can be isolated behind an
-   anti-corruption layer rather than leaking into the event model.
+- [ ] **1. Buffer cap sizing at the daemon.** What's the worst-case expected
+      outage duration for a recording session, and what event volume/size
+      should the local WorkQueue cap be sized against? *(Mechanism decided
+      — will ship as an `IOptions<T>` class with a smart default, see
+      `ARCHITECTURE.md` → Configuration. The actual value is still open.)*
+- [ ] **2. Leaf node reconnect-sync reliability.** There are known reports
+      of gaps in leaf-node mirror sync after extended disconnection. This
+      needs explicit integration testing against your actual outage
+      patterns before being trusted for correctness-critical data — do not
+      assume it "just works" from documentation alone.
+- **3. Server-tier retention/backup policy.**
+  - [x] Ownership split decided: backup/restore mechanics are ops-owned —
+        standard, transparent tooling per provider (see
+        `docs/07-operations-guide.md`). Development/design only owns
+        purge-safety: whether purging (not just backing up) old rows is
+        ever safe without breaking idempotent-apply or replay-ordering
+        guarantees.
+  - [ ] Retention duration and RPO/RTO targets themselves are still an open
+        ops/business decision.
+- **4. Full-mesh vs hub-and-spoke topology at scale.**
+  - [x] Policy decided: full mesh must remain a supported gateway
+        topology — nothing in the design forecloses it. Standalone (single
+        server) and hub-and-spoke are the minimum-scale configurations
+        validated first.
+  - [ ] Which topology to actually default to at real scale is still open
+        — revisit once the number of server-tier sites and their
+        instability characteristics are known.
+- [ ] **5. Tunnel relay security model.** Relaying an interactive session
+      through the nearest server has real security implications (attack
+      surface, auth, session hijacking risk) that need a dedicated security
+      review before implementation — this doc only covers the
+      architectural shape.
+- [x] **6. WCF/legacy interop boundary.** Resolved: out of scope for this
+      project. If a specific external component ever needs WCF integration
+      with an older on-prem system, that's implemented within that
+      component — isolated behind an anti-corruption layer (see
+      `CLAUDE.md`) — not built into sync-mesh's core scope.

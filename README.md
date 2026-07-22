@@ -13,9 +13,14 @@ off to Claude Code for implementation.
    implementation sketch, NATS subject naming.
 4. **`docs/05-implementation-guide.md`** — phased build plan with entry/exit
    criteria and linked BDD features per phase.
-5. **`WORKPLAN.md`** — living tracker for phase status, in-flight work, and
-   decisions/deviations made during implementation. Update this as you go;
-   the implementation guide defines the plan, this tracks progress against it.
+5. **`docs/07-operations-guide.md`** — ops-owned vs. dev-owned split for
+   operational concerns (e.g. server-tier backup/retention).
+6. **`WORKPLAN.md`** — living tracker for phase *status*: what's done,
+   in-flight, next. Update this as you go; the implementation guide defines
+   the plan, this tracks progress against it.
+7. **`ARCHITECTURE.md`** — living record of engineering *conventions*
+   adopted during implementation (framework choices, workarounds, things
+   that didn't match the original docs), kept separate from phase status.
 
 ## Diagrams (PlantUML, embedded in Markdown)
 
