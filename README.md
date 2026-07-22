@@ -28,6 +28,9 @@ off to Claude Code for implementation.
   daemon component (C4 L3) diagrams
 - `docs/sequence-diagrams.md` — event recording flow, server mesh
   reconciliation, and remote monitoring/tunnel fallback flows
+- `docs/08-deployment-models.md` — deployment topology shapes (client
+  isolated, client→on-prem, client→cloud, standalone server, intra-site
+  mesh with limited inter-site gateway, full mesh everywhere)
 
 Each diagram is a fenced ` ```plantuml ` block inline in the Markdown file —
 render with any PlantUML renderer (VS Code PlantUML extension, plantuml.com

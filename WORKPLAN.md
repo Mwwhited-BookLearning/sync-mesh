@@ -83,14 +83,15 @@ phase status), see `ARCHITECTURE.md` instead.
 
 ## Phase 3 — Server Mesh Reconciliation (Gateways/Supercluster)
 
-**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md) (`HlcGenerator.Merge`), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md)
+**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md) (`HlcGenerator.Merge`), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md), [Deployment models](docs/08-deployment-models.md)
 
 **Entry criteria:** Phase 2 complete, at least two server-tier instances available for testing.
 
 Note: a standalone (zero-peer) server is a fully valid, permanent deployment on its own — this phase is about *multi-site* deployments specifically, not something every deployment must eventually adopt.
 
-- [ ] NATS gateway connections between two+ server-tier nodes, TLS-secured with registered service credentials — validate hub-and-spoke first; full mesh must remain supported by the topology/config, not architecturally precluded
-- [ ] Server-side apply logic merges incoming HLC values
+- [ ] Intra-site NATS gateway connections between a site's own server-tier nodes, TLS-secured with registered service credentials — full mesh *within* a site is the default assumption (reliable LAN connectivity)
+- [ ] Inter-site gateway connections (e.g. on-prem ↔ cloud) via a single/limited designated gateway server per site by default — not full mesh across every server at every site, though that remains supported if ever wanted
+- [ ] Server-side apply logic merges incoming HLC values — two-way sync, every connected server both publishes and applies, converging to the same fully-replicated history regardless of which physical links carried the data
 - [ ] Replay/read-model query orders by `(HlcPhysicalTicks, HlcLogicalCounter)`, not insertion/arrival order
 - [ ] (Future, undesigned) offline/batch reconciliation mechanism for a standalone site that later needs to sync out-of-band — tracked as a distinct decision, not assumed to be "just NATS gateways later"
 
@@ -112,9 +113,9 @@ Note: a standalone (zero-peer) server is a fully valid, permanent deployment on 
 
 ## Phase 5 — Interactive Tunnel + Relay Fallback
 
-**Related docs**: [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md) (see Amendment), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security baseline decided, full review still required)
+**Related docs**: [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md) (see Amendment), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security baseline + phase gating decided, full review moved to Phase 6)
 
-**Entry criteria:** Phase 2 complete. Full security review (Open Question 5) must be scheduled/completed before production use, even if a prototype is built earlier — the TLS + service-credential baseline below isn't a substitute for that review.
+**Entry criteria:** Phase 2 complete. The full security review (Open Question 5) is **out of scope for this phase** — it's a Phase 6 pre-production gate, not a POC/prototype blocker. This phase ships against the security baseline already decided (TLS + registered service credentials), not the full review.
 
 - [ ] Tunnel/relay tooling integrated as a mechanism separate from the NATS event mesh, TLS-secured, authenticating with a registered service credential (not end-user permissions) — remote-user authorization for what they can view/control is a separate layer on top
 - [ ] Direct-connection-first, relay-fallback logic on the client side
@@ -122,19 +123,21 @@ Note: a standalone (zero-peer) server is a fully valid, permanent deployment on 
 
 **Exit criteria:**
 - [ ] `remote-monitoring-tunnel.feature` fully passes, including both cross-failure-isolation scenarios
-- [ ] Security review sign-off obtained, or explicitly deferred with risk accepted by a named owner
+- [ ] No security-review sign-off required to exit this phase (that gate is in Phase 6) — but this phase's output must not be treated as production-ready regardless
 
 ## Phase 6 — Hardening & Operational Readiness
 
 **Related docs**: [Design doc §8](docs/00-design-document.md) (all Open Questions), `docs/adr/` (re-review as needed)
 
-**Entry criteria:** Phases 1–5 functionally complete.
+**Entry criteria:** Phases 1–5 functionally complete. This is the
+pre-production-readiness phase — nothing here is required for a POC.
 
-- [ ] Buffer cap sizing finalized (Open Question 1)
+- [x] ~~Buffer cap sizing~~ (Open Question 1) — resolved: floor is "until server acks," ceiling defaults to disk-bound, configurable smaller
 - [ ] Server-tier retention/backup policy defined (Open Question 3 — see
       `docs/07-operations-guide.md` for the ops-owned/dev-owned split)
-- [ ] Full mesh validated/decided default-vs-opt-in given actual site count and instability characteristics (Open Question 4) — standalone and hub-and-spoke already work by this point
+- [ ] Full mesh validated/decided default-vs-opt-in given actual site count and instability characteristics (Open Question 4) — standalone and intra-site full mesh already work by this point
 - [ ] Load/chaos test leaf-node reconnect behavior under realistic outage durations/volumes (Open Question 2)
+- [ ] Complete the dedicated tunnel/relay security review (Open Question 5) and obtain sign-off — required before any production deployment, not before this phase's own completion in a non-production context
 - [x] ~~WCF/legacy interop scope~~ (Open Question 6) — resolved: out of scope for this project
 
 **Exit criteria:**
@@ -148,10 +151,12 @@ Mirrors `docs/00-design-document.md` §8 — flagged, not silently decided, per
 `CLAUDE.md`. Checked = actually decided; unchecked = still needs a
 product/ops decision, don't resolve it here.
 
-- [ ] **1. Buffer cap sizing at the daemon** (Phase 6). Will ship as an
-      `IOptions<T>` class (e.g. `DaemonBufferOptions` with
-      `MaxAge`/`MaxMsgs`) per `ARCHITECTURE.md` → Configuration; default
-      value still needs a decision once expected outage duration is known.
+- [x] **1. Buffer cap sizing at the daemon.** Resolved: floor is "never
+      discard before the server acks it" (WorkQueue retention); ceiling
+      defaults to unbounded except by available local disk, configurable
+      to a smaller explicit `MaxBytes`/`MaxAge`/`MaxMsgs` via `IOptions<T>`
+      (`ARCHITECTURE.md` → Configuration). Disk-exhaustion behavior is
+      reject-new-writes, not evict-unacked-data. See design doc §4.2.
 - [ ] **2. Leaf node reconnect-sync reliability** (Phase 2 exit criteria
       requires an explicit test; Phase 6 requires load/chaos testing).
       Reconnect/backoff settings will also be `IOptions<T>`-bound with a
@@ -168,15 +173,46 @@ product/ops decision, don't resolve it here.
         "Retention default". `IOptions<T>`-bound per `ARCHITECTURE.md`.
   - [ ] Compliance/legal sign-off on the exact figures for the actual
         jurisdiction(s)/accreditation this deployment operates under, plus
-        RPO/RTO targets — still open; the smart default isn't that sign-off.
+        RPO/RTO targets — still open; the smart default isn't that
+        sign-off. **Out of scope for POC** — a Phase 6 pre-release gate,
+        like Open Question 5.
 - **4. Full-mesh vs. hub-and-spoke topology at scale** (Phase 6).
-  - [x] Policy decided — full mesh must remain a supported gateway topology
-        (not architecturally precluded); standalone (single server) and
-        hub-and-spoke are the minimum-scale configurations validated first.
-  - [ ] Which topology to actually default to at real scale — still open,
-        revisit once node count/instability characteristics are known.
-- [ ] **5. Tunnel relay security model** — needs dedicated security review
-      before Phase 5 is production-ready.
+  - [x] Policy decided — topology is fully flexible and config-driven, no
+        architectural minimum or maximum on server/site/gateway count.
+        Common patterns: full mesh **within** a site, with a limited
+        designated gateway per site for **cross-site** links — but full
+        mesh extending to cloud/remote sites directly is equally valid, and
+        no on-prem tier is required at all (a daemon can connect straight
+        to a cloud server). None of these are mutually exclusive or
+        privileged. Every server everywhere still converges to the same
+        fully-replicated history regardless of which pattern is used. See
+        `docs/08-deployment-models.md` for diagrams.
+  - [x] Standalone (a single server, permanently, zero live peer
+        connections, no minimum node count) — including a daemon with no
+        nearest server at all ("client isolated") — is a first-class
+        deployment mode in its own right, not a bootstrapping step toward a
+        mesh. Later reconciliation may be offline/batch rather than a live
+        gateway — compatible with idempotent apply/HLC ordering without
+        redesign.
+  - [ ] How many designated gateway servers per inter-site link (one vs. a
+        small redundant set for HA), and which pattern to actually use for
+        a real deployment — still open, revisit once site count/
+        instability is known. **Out of scope for POC** — a Phase 6
+        pre-release gate.
+  - [ ] The offline/batch sync mechanism itself for a standalone site —
+        undesigned, a distinct future decision.
+- **5. Tunnel relay security model.**
+  - [x] Security baseline decided — TLS-secured, authenticating with
+        registered service credentials scoped to the daemon/server
+        instance, never end-user permissions (same as the event mesh; see
+        `docs/adr/0002-nats-leaf-nodes-for-transport.md` Amendment and
+        `docs/adr/0004-separate-tunnel-from-event-mesh.md` Amendment).
+  - [x] Phase gating decided: the full review is a **Phase 6
+        pre-production readiness gate**, not a POC/prototype blocker for
+        Phase 5.
+  - [ ] Full dedicated security review itself still required before
+        production: attack surface, the remote-user authorization layer on
+        top of the baseline above, session hijacking risk, etc.
 - [x] **6. WCF/legacy interop boundary scope** — resolved: out of scope for
       this project. Any future external component needing WCF integration
       implements it within that component (anti-corruption layer), not in

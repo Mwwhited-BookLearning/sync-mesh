@@ -115,9 +115,11 @@ instances available for testing.
 
 ## Phase 5 — Interactive Tunnel + Relay Fallback
 
-**Entry criteria:** Phase 2 complete. Security review (Open Question 5 in
-design doc) must be scheduled/completed before this phase is considered
-production-ready, even if a prototype is built earlier.
+**Entry criteria:** Phase 2 complete. The dedicated security review (Open
+Question 5) is **out of scope for this phase** — it's a pre-production
+gate (Phase 6), not a POC/prototype blocker. Phase 5 ships against the
+security *baseline* already decided (TLS, registered service credentials —
+see ADR-0002/ADR-0004 Amendments), not the full review.
 
 **Scope:**
 - Integrate chosen tunnel/relay tooling (e.g. `frp`/`chisel` or overlay
@@ -131,13 +133,14 @@ production-ready, even if a prototype is built earlier.
 **Exit criteria:**
 - `docs/bdd/features/remote-monitoring-tunnel.feature`: full feature
   passes, including both cross-failure-isolation scenarios.
-- Security review sign-off obtained (or explicitly deferred with risk
-  accepted by a named owner) before enabling in any production-like
-  environment.
+- No security-review sign-off required to exit this phase — that gate
+  lives in Phase 6. Phase 5's own POC/prototype must not be treated as
+  production-ready regardless.
 
 ## Phase 6 — Hardening & Operational Readiness
 
-**Entry criteria:** Phases 1–5 functionally complete.
+**Entry criteria:** Phases 1–5 functionally complete. This is the
+pre-production-readiness phase — nothing here is required for a POC.
 
 **Scope:**
 - Capacity-plan and finalize local buffer caps (Open Question 1).
@@ -148,6 +151,9 @@ production-ready, even if a prototype is built earlier.
 - Load/chaos test leaf-node reconnect behavior under realistic outage
   durations and event volumes (Open Question 2), not just the Phase 2
   smoke test.
+- Complete the dedicated tunnel/relay security review (Open Question 5)
+  and obtain sign-off — required before any production deployment, not
+  before this phase's own completion in a non-production context.
 - ~~Confirm WCF/legacy interop scope~~ — resolved (Open Question 6): out of
   scope for this project. No Phase 6 work item here.
 

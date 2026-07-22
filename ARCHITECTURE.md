@@ -46,6 +46,61 @@ things every such default needs, without exception:
    against the actual jurisdiction/accreditation this deployment operates
    under. Don't let "we have a default" quietly become "this was decided."
 
+## Sync model & security baseline
+
+- **Buffer cap = floor + configurable ceiling, not one guessed number.**
+  Floor: never discard a locally-buffered event before the nearest server
+  acks it (WorkQueue retention already gives this). Ceiling: defaults to
+  unbounded except by available local disk — store everything until disk
+  actually runs out, rather than pre-guessing an outage duration —
+  configurable down to an explicit `MaxBytes`/`MaxAge`/`MaxMsgs` via
+  `IOptions<T>`. On real disk exhaustion, reject new local writes
+  (`Discard: New`); never evict unacknowledged data, since that would
+  violate the floor. See `docs/adr/0002-nats-leaf-nodes-for-transport.md`
+  Amendment and design doc §4.2.
+- **Client↔service hops are one-way in each direction; server↔server is
+  two-way.** Local App ↔ Daemon and Daemon ↔ Server are both client↔service
+  relationships where client → service (write) and service → client
+  (buffered-read response) are each single-directional — never a
+  continuous two-way mirror. The daemon never receives a replica of
+  server-side data; anything the local app reads back comes from the
+  daemon's own local store. Server ↔ server sync (the mesh, when peers are
+  configured) is genuinely **two-way**: every connected server both
+  publishes its own events and applies incoming events from peers,
+  converging to the same fully-replicated history — **full eventual
+  replication, not a consensus/quorum-voting mechanism** (no write blocks
+  on peer acknowledgment). A standalone server (no peers configured) has
+  nothing to sync with, trivially — that's not a one-way restriction, it's
+  the degenerate case of "two-way sync among zero peers."
+- **Standalone (zero peers) is a first-class, permanent topology, not a
+  bootstrapping step.** No deployment is required to eventually join a
+  mesh. A standalone site's later reconciliation with others, if it ever
+  needs one, may be an offline/batch mechanism instead of a live gateway
+  connection — that mechanism is undesigned and is tracked as a separate
+  future decision, not assumed to be "just NATS gateways, later." This
+  works without redesigning reconciliation because idempotent apply and
+  HLC ordering don't depend on *how* an event arrives.
+- **No architectural minimum or maximum on server/site/gateway count, and
+  no on-prem tier is required at all.** Supported shapes include (not
+  exhaustively): a daemon with no nearest server at all ("client
+  isolated," permanently — same floor/ceiling buffer behavior as an
+  extended outage, just indefinite); a daemon connecting directly to a
+  cloud server with zero on-prem servers; a standalone single server;
+  multiple servers fully meshed at one site; multiple sites fully meshed
+  with each other directly, including cloud; and multiple sites connected
+  through a limited designated gateway server per site. None of these are
+  mutually exclusive or privileged over another — topology is a
+  deployment/config decision, and reconciliation logic must not assume any
+  particular shape. See `docs/08-deployment-models.md` for diagrams.
+- **Every mesh/tunnel connection is TLS-secured and authenticates with a
+  registered service credential scoped to the daemon/server instance —
+  never end-user identity/permissions.** This applies uniformly to leaf
+  connections, gateway connections, and the Tier X tunnel/relay. A remote
+  user's own authorization for what they're allowed to view/control is a
+  separate layer on top, not a substitute for this transport-level
+  baseline. See `docs/adr/0002-nats-leaf-nodes-for-transport.md` and
+  `docs/adr/0004-separate-tunnel-from-event-mesh.md` Amendments.
+
 ## Operational vs. development ownership
 
 Where an open question is really an *operations* concern (backup schedules,
@@ -57,6 +112,16 @@ externally isolated (the app's own correctness guarantees depend on it —
 e.g. purge/retention interacting with idempotent-apply dedupe). See that
 doc's worked example for server-tier retention/backup (design doc Open
 Question 3).
+
+**Ops/legal/compliance sign-off is a pre-release (Phase 6) concern, out of
+scope for POC.** The tunnel security review, retention compliance sign-off,
+and real-scale topology decisions all gate production readiness — they
+don't gate a POC or earlier implementation phases. A POC ships against the
+smart defaults and security baseline already decided in this document, not
+a completed sign-off. When adding a new open question of this shape,
+default it the same way: decide the mechanism/baseline now, defer the
+sign-off to Phase 6, and say so explicitly rather than leaving it
+ambiguous which phase actually gates it.
 
 ## Testing
 

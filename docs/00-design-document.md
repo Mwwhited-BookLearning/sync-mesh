@@ -5,7 +5,7 @@
 | Status | Draft — ready for implementation planning |
 | Owners | (assign) |
 | Last updated | 2026-07-22 |
-| Related | `docs/adr/`, `docs/05-implementation-guide.md`, `docs/bdd/features/` |
+| Related | `docs/adr/`, `docs/05-implementation-guide.md`, `docs/bdd/features/`, `docs/08-deployment-models.md` |
 
 ## 1. Purpose
 
@@ -78,16 +78,24 @@ flows (PlantUML source embedded inline in each Markdown file).
   local store. The daemon never proxies reads to/from the server to satisfy
   this: it only ever holds what the local app itself is writing (or has
   recently written), never a mirror of server-side history. See §4.2.
+- **Client↔service traffic at this hop is one-way in each direction**:
+  client → service (write) and service → client (buffered-read response)
+  are each a single-directional flow, not a continuous two-way
+  replication/mirror channel. Contrast with server↔server sync (§4.4),
+  which genuinely is two-way.
 
 ### 4.2 Tier 1 — Local Daemon ↔ Nearest Server
 
 - Transport: NATS leaf node. The daemon runs (or embeds) a NATS server
   configured as a leaf node dialing out to the nearest server's cluster.
-- **Sync is one-way**: daemon → server, for writes only. The server never
-  pushes a mirror/replica of its dataset back down to the daemon — the
-  daemon has no need for "everything from the server," only what the local
-  user is actively writing or reading back locally (§4.1). Nothing in the
-  leaf-node topology should be used to sync data downstream.
+- **Sync is one-way here too**: daemon (client) → server (service), for
+  writes only. The server never pushes a mirror/replica of its dataset back
+  down to the daemon — the daemon has no need for "everything from the
+  server," only what the local user is actively writing or reading back
+  locally (§4.1, served from the daemon's own store). Nothing in the
+  leaf-node topology should be used to sync data downstream. This one-way,
+  client↔service pattern is specific to Tier 0/Tier 1 — it does not extend
+  to server↔server sync in the mesh, which is two-way (§4.4).
 - Durability: local JetStream stream with **WorkQueue retention**.
   Retention has a floor and a (configurable) ceiling, not a single fixed
   cap:
@@ -122,6 +130,16 @@ flows (PlantUML source embedded inline in each Markdown file).
   value (connection URL + credentials), not a code branch.
 - This reuses the transport-abstraction goal discussed earlier in the
   project: swapping environments is a config change.
+- **No on-prem tier is required at all** — a daemon connecting directly to
+  a cloud nearest server, with no on-prem server in the picture, is a
+  fully valid deployment shape, not a degraded case of the "normal" one.
+- **A daemon with no nearest server configured or reachable at all
+  ("client isolated") is also a valid, potentially permanent deployment
+  mode** — not merely a temporary outage to tolerate. This isn't a
+  separate mechanism: it's the same floor/ceiling buffer behavior from
+  §4.2 (keep buffering, bounded by disk, reject new writes once genuinely
+  full) applied indefinitely rather than until reconnect. Buffered local
+  read (§4.1) must still work fully in this mode.
 
 ### 4.4 Tier 3 — Server Mesh Reconciliation
 
@@ -131,11 +149,50 @@ flows (PlantUML source embedded inline in each Markdown file).
   authenticate with **registered service credentials scoped to the
   daemon/server instance** — never end-user identity/permissions. See
   §4.5 and ADR-0002 for the same requirement applied to the tunnel path.
-- Full mesh must remain a supported gateway topology — nothing in the
-  design should architecturally foreclose it. Hub-and-spoke is the default
-  starting shape for multi-site deployments; full mesh is the thing to
-  validate once real node count/instability characteristics are known (see
-  ADR-0002 and Open Question 4).
+- **Server↔server sync is two-way** — unlike the client↔service hops in
+  §4.1/§4.2, which are one-way. Every connected server both publishes its
+  own locally-received events to its peers *and* applies incoming events
+  from them, converging toward the same fully-replicated event history
+  across the mesh. This is **full eventual replication, not a
+  consensus/quorum-voting mechanism**: no write is blocked waiting on peer
+  acknowledgment, consistent with the at-least-once, eventually-consistent
+  goals in §2/§3 and the "no distributed transactions across the mesh"
+  non-goal — servers end up with the same data, not a synchronously agreed
+  commit.
+- **Topology is fully flexible and config-driven, with no architectural
+  minimum or maximum on server, site, or gateway count.** Nothing below is
+  the *only* supported shape — these are common patterns, not an exhaustive
+  or exclusive list:
+  - *Within* a single site (e.g. all on-prem servers at one physical
+    location), servers are commonly **fully meshed** by default —
+    local/LAN connectivity is expected to be reliable enough that this
+    isn't a concern.
+  - *Between* sites (e.g. an on-prem site and a cloud region, or multiple
+    physical sites), a common pattern is a **single or limited set of
+    designated gateway servers per site** carrying the cross-site
+    connection, instead of every server at one site connecting directly to
+    every server at another — this bounds the number of WAN-crossing
+    gateway links.
+  - **Full mesh is equally valid extending all the way to cloud/remote
+    sites directly** — the "designated gateway per site" pattern above is
+    a preference for bounding connection count, not a restriction. A
+    deployment can be fully meshed on-prem *and* fully meshed to
+    cloud/remote sites, with no gateway bottleneck, if that's what's
+    configured.
+  - There is no minimum or maximum number of sites, servers per site, or
+    gateway servers — a deployment can be one on-prem server, one cloud
+    server with zero on-prem servers, many servers fully meshed at one
+    site, many sites fully meshed with each other, or many sites connected
+    through limited gateways — all equally supported.
+
+  Regardless of which physical links carry the traffic, the end state is
+  identical: every server, everywhere, converges to the same
+  fully-replicated event history (per the two-way sync above) — topology
+  only affects *how many connections* carry that convergence, not *whether*
+  it happens or *which specific pattern* is allowed. See ADR-0002, Open
+  Question 4, and `docs/08-deployment-models.md` for diagrams of these and
+  other supported shapes (client-isolated, client→cloud with no on-prem
+  tier, standalone server, etc.).
 - **Standalone is a first-class, permanent topology in its own right — not
   merely a minimal starting point that's expected to eventually join a
   mesh.** A single server with no peer connections at all must work
@@ -258,11 +315,15 @@ sub-items) are still open and should not be resolved without asking.
         (both adult and minor) for the actual jurisdiction(s)/accreditation
         requirements this deployment operates under, plus RPO/RTO targets,
         is still open. A smart default is a starting point, not that
-        sign-off.
+        sign-off. **Out of scope for POC** — this is a pre-production
+        (Phase 6) gate, like Open Question 5.
 - **4. Full-mesh vs hub-and-spoke topology at scale.**
-  - [x] Policy decided: full mesh must remain a supported gateway
-        topology — nothing in the design forecloses it. Hub-and-spoke is
-        the default starting shape for multi-site deployments.
+  - [x] Policy decided (see §4.4): topology is fully flexible and
+        config-driven with **no architectural minimum or maximum** on
+        server/site/gateway count. Common patterns — full mesh within a
+        site with a limited designated gateway per site for cross-site
+        links, or full mesh extending all the way to cloud/remote sites —
+        are equally supported; neither forecloses the other.
   - [x] Standalone (a single server, permanently, with no live peer
         connections at all) is a first-class, valid deployment mode in its
         own right — not a bootstrapping step toward a mesh. There is no
@@ -270,10 +331,11 @@ sub-items) are still open and should not be resolved without asking.
         be offline/batch rather than a live gateway connection; this is
         compatible with idempotent apply/HLC ordering without redesign
         (see §4.4).
-  - [ ] Which topology (hub-and-spoke vs. full mesh) to actually default to
-        for *multi-site* deployments at real scale is still open — revisit
-        once the number of server-tier sites and their instability
-        characteristics are known.
+  - [ ] Still open (**out of scope for POC** — a pre-production/Phase 6
+        concern): how many designated gateway servers per inter-site link
+        (one vs. a small redundant set for HA), and which pattern to
+        actually use for a real deployment — revisit once the number of
+        sites and their instability characteristics are known.
   - [ ] The offline/batch sync mechanism itself, for a standalone site that
         later needs to reconcile with others out-of-band, is undesigned —
         a distinct future decision, not assumed to just be "NATS gateways,
@@ -284,7 +346,11 @@ sub-items) are still open and should not be resolved without asking.
         instance — never end-user permissions. A remote user's own
         authorization for what they're allowed to view/control is a
         separate layer on top of this transport-level baseline.
-  - [ ] The full dedicated security review is still required before
+  - [x] Phase gating decided: the full review is a **pre-production
+        readiness gate (Phase 6)**, not a POC/prototype blocker — Phase 5's
+        tunnel implementation is explicitly out of scope for the review and
+        must not be treated as production-ready regardless.
+  - [ ] The full dedicated security review itself is still required before
         production: attack surface, the remote-user authorization layer
         itself, session hijacking risk, etc. This doc only covers the
         architectural shape — the baseline above doesn't substitute for

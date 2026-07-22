@@ -82,17 +82,39 @@ default instead of an open sizing exercise.
   Configuration). When disk is genuinely exhausted, reject new local
   writes (`Discard: New`) rather than evict unacknowledged data — the only
   behavior consistent with the floor above.
-- **Sync is one-way**: daemon → server, writes only. The leaf-node
-  connection is never used to push a mirror/replica of server-side data
-  back down to the daemon. Reads the local app needs are served entirely
-  from the daemon's own local store (a "buffered read"), never proxied
-  to/from the server.
-- **Standalone (zero peer connections) is a first-class, permanent
-  topology**, not a bootstrapping step — see design doc §4.4 and Open
-  Question 4. A standalone site's later reconciliation with others, if
-  ever needed, may be an offline/batch mechanism rather than a live
-  gateway connection; that mechanism itself is undesigned and is a
-  separate future decision.
+- **Sync is one-way at the leaf-node hop**: daemon (client) → server
+  (service), writes only. The leaf-node connection is never used to push a
+  mirror/replica of server-side data back down to the daemon. Reads the
+  local app needs are served entirely from the daemon's own local store (a
+  "buffered read"), never proxied to/from the server. This one-way
+  pattern is specific to the client↔service relationship (Local
+  App↔Daemon, Daemon↔Server) — it does **not** extend to gateway
+  connections between servers, which are two-way: every connected server
+  both publishes its own events and applies incoming events from peers,
+  converging to the same fully-replicated history (full eventual
+  replication, not a consensus/quorum-voting mechanism — no write blocks
+  on peer acknowledgment).
+- **Gateway topology is fully flexible, with no architectural minimum or
+  maximum on server/site/gateway count.** Common patterns include: full
+  mesh *within* a site (reliable local/LAN connectivity makes this the
+  simplest shape), and a single/limited designated gateway server per site
+  carrying *cross-site* links instead of full mesh across every server at
+  every site (bounds WAN-crossing connection count). Full mesh extending
+  all the way to cloud/remote sites is equally valid — the designated-
+  gateway pattern is a preference for bounding connection count, not a
+  restriction, and neither pattern forecloses the other. No on-prem tier
+  is required at all: a daemon connecting straight to a cloud server, with
+  zero on-prem servers, is a fully valid shape too. Whatever the physical
+  links, every server everywhere still converges to the same
+  fully-replicated history, since reconciliation doesn't care which links
+  carried the data. See design doc §4.3–4.4, Open Question 4, and
+  `docs/08-deployment-models.md` for diagrams of these shapes.
+- **Standalone (zero peer connections) — including a daemon with no
+  nearest server at all — is a first-class, permanent topology**, not a
+  bootstrapping step — see design doc §4.2–4.4 and Open Question 4. A
+  standalone site's later reconciliation with others, if ever needed, may
+  be an offline/batch mechanism rather than a live gateway connection;
+  that mechanism itself is undesigned and is a separate future decision.
 - **All connections — leaf, gateway, and the Tier X tunnel/relay — use TLS
   and authenticate with registered service credentials scoped to the
   daemon/server instance, never end-user identity/permissions.** See

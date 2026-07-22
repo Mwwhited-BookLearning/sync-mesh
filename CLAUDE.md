@@ -58,10 +58,12 @@ tradeoff explicitly to the human first.
   `docs/05-implementation-guide.md` (static phased plan) →
   `docs/06-data-model.md` (envelope/entity/HLC shapes) →
   `docs/07-operations-guide.md` (ops-owned vs. dev-owned operational
-  concerns, e.g. backup/retention) → `docs/adr/` (individual decisions) →
-  `docs/bdd/features/` (executable acceptance criteria). `WORKPLAN.md`
-  tracks phase status against the implementation guide; `ARCHITECTURE.md`
-  tracks engineering conventions established along the way.
+  concerns, e.g. backup/retention) → `docs/08-deployment-models.md`
+  (topology shapes, PlantUML deployment diagrams) → `docs/adr/` (individual
+  decisions) → `docs/bdd/features/` (executable acceptance criteria).
+  `WORKPLAN.md` tracks phase status against the implementation guide;
+  `ARCHITECTURE.md` tracks engineering conventions established along the
+  way.
 - **Operational vs. development ownership**: when a concern (backup
   schedules, retention windows, infra sizing, etc.) can be fully handled by
   standard external/transparent tooling, document the suggested pattern in
@@ -69,6 +71,15 @@ tradeoff explicitly to the human first.
   application. Only pull something into development/design scope when it
   genuinely can't be externally isolated — e.g. the app's own correctness
   guarantees (idempotent apply, replay ordering) depend on it.
+- **Ops/compliance sign-off questions are out of scope for POC work.**
+  Phase 6 (`docs/05-implementation-guide.md`) is the pre-production-
+  readiness gate — things like the tunnel security review, retention
+  compliance sign-off, and real-scale topology decisions live there, not
+  earlier phases. A POC ships against the smart defaults and security
+  *baseline* already decided (see `ARCHITECTURE.md`), not against a
+  completed ops sign-off. Don't block earlier-phase work waiting on these,
+  and don't let a Phase 6 gate quietly creep into an earlier phase's exit
+  criteria.
 - **Configuration**: any tunable value (buffer caps, timeouts, retention,
   reconnect/backoff settings, subject prefixes, etc.) must be configurable
   via the `Microsoft.Extensions.Options` pattern — bind a POCO options class
@@ -101,10 +112,20 @@ tradeoff explicitly to the human first.
 5. Keep the local daemon's durability scope narrow: it is a short-lived
    buffer for the recording session, not a long-term store. Do not let
    "just in case" thinking turn it into a second permanent event store.
+   Retention has a floor (never discard before the server acks it) and a
+   configurable ceiling (defaults to disk-bound, not a small fixed cap) —
+   see `ARCHITECTURE.md` → Sync model & security baseline.
 6. Keep the monitoring/tunnel path and the event-sync path architecturally
    separate (different subjects/services, different failure domains) even
    though both may relay through the same nearest server.
-7. Keep `WORKPLAN.md` and `ARCHITECTURE.md` current as work progresses.
+7. Sync is one-way and service-authenticated: daemon → server for writes
+   only (never a reverse mirror of server data down to a daemon; local
+   reads are served from the daemon's own store), and every mesh/tunnel
+   connection authenticates with a registered service credential, never
+   end-user identity/permissions. Standalone (zero peers) is a first-class,
+   permanent deployment mode, not something every site must eventually
+   outgrow. See `ARCHITECTURE.md` → Sync model & security baseline.
+8. Keep `WORKPLAN.md` and `ARCHITECTURE.md` current as work progresses.
    `WORKPLAN.md` tracks phase *status* — what's done, in-flight, next —
    against the static plan in the implementation guide. `ARCHITECTURE.md`
    tracks engineering *conventions* adopted along the way (framework
