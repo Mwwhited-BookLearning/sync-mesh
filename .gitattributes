@@ -1,0 +1,67 @@
+# Auto-detect text files and normalize line endings to LF in the repo.
+* text=auto eol=lf
+
+# Sources — always LF in the repo; Visual Studio and VS Code both handle
+# LF-in-repo/CRLF-on-checkout fine via core.autocrlf, so keep history diffable.
+*.cs        text diff=csharp
+*.csx       text diff=csharp
+*.vb        text
+*.razor     text
+*.cshtml    text
+*.xaml      text
+
+# Project / solution files — Visual Studio writes CRLF; leave line endings as
+# committed (do not let git rewrite GUIDs/whitespace VS is sensitive about).
+*.sln       text eol=crlf
+*.csproj    text eol=crlf
+*.vbproj    text eol=crlf
+*.fsproj    text eol=crlf
+*.props     text eol=crlf
+*.targets   text eol=crlf
+
+# Config / data
+*.json      text eol=lf
+*.xml       text eol=lf
+*.config    text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.editorconfig text eol=lf
+
+# Docs / diagrams / specs (this repo: docs/, ADRs, BDD features, PlantUML)
+*.md        text eol=lf
+*.puml      text eol=lf
+*.feature   text eol=lf diff=gherkin
+
+# Shell / scripts
+*.sh        text eol=lf
+*.ps1       text eol=crlf
+
+# SQL migrations (EF Core) — keep diffable, no accidental CRLF/LF churn
+*.sql       text eol=lf
+
+# Web assets, if/when a UI shows up
+*.js        text eol=lf
+*.ts        text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+
+# Binary/opaque — never diff, never line-ending-normalize
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.dll       binary
+*.exe       binary
+*.pdb       binary
+*.snk       binary
+*.pfx       binary
+*.db        binary
+*.sqlite    binary
+*.sqlite3   binary
+
+# Let GitHub/Linguist know generated/vendored paths shouldn't count toward
+# language stats or show up in diffs by default.
+**/obj/**      linguist-generated
+**/bin/**      linguist-generated
+*.designer.cs  linguist-generated
