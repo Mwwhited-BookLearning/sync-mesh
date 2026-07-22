@@ -68,6 +68,10 @@ tradeoff explicitly to the human first.
 6. Keep the monitoring/tunnel path and the event-sync path architecturally
    separate (different subjects/services, different failure domains) even
    though both may relay through the same nearest server.
+7. Keep `WORKPLAN.md` current as work progresses — phase status, what's
+   in-flight, and any decisions/deviations made along the way (framework
+   choices, workarounds, things that didn't match the original docs). It's
+   the living companion to the static plan in the implementation guide.
 
 ## Open questions to flag to the human, not silently resolve
 

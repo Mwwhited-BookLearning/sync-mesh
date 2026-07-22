@@ -13,6 +13,9 @@ off to Claude Code for implementation.
    implementation sketch, NATS subject naming.
 4. **`docs/05-implementation-guide.md`** — phased build plan with entry/exit
    criteria and linked BDD features per phase.
+5. **`WORKPLAN.md`** — living tracker for phase status, in-flight work, and
+   decisions/deviations made during implementation. Update this as you go;
+   the implementation guide defines the plan, this tracks progress against it.
 
 ## Diagrams (PlantUML, embedded in Markdown)
 
