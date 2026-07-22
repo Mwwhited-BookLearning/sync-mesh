@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SyncMesh.AppHost/SyncMesh.AppHost.csproj" />
+    <Project Path="src/SyncMesh.Contracts/SyncMesh.Contracts.csproj" />
+    <Project Path="src/SyncMesh.Daemon/SyncMesh.Daemon.csproj" />
+    <Project Path="src/SyncMesh.EventStore.Migrations.Postgres/SyncMesh.EventStore.Migrations.Postgres.csproj" />
+    <Project Path="src/SyncMesh.EventStore.Migrations.Sqlite/SyncMesh.EventStore.Migrations.Sqlite.csproj" />
+    <Project Path="src/SyncMesh.EventStore.Migrations.SqlServer/SyncMesh.EventStore.Migrations.SqlServer.csproj" />
+    <Project Path="src/SyncMesh.EventStore/SyncMesh.EventStore.csproj" />
+    <Project Path="src/SyncMesh.ServerHost/SyncMesh.ServerHost.csproj" />
+    <Project Path="src/SyncMesh.ServiceDefaults/SyncMesh.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SyncMesh.Bdd.Tests/SyncMesh.Bdd.Tests.csproj" />
+    <Project Path="tests/SyncMesh.EventStore.Tests.Postgres/SyncMesh.EventStore.Tests.Postgres.csproj" />
+    <Project Path="tests/SyncMesh.EventStore.Tests.Sqlite/SyncMesh.EventStore.Tests.Sqlite.csproj" />
+    <Project Path="tests/SyncMesh.EventStore.Tests.SqlServer/SyncMesh.EventStore.Tests.SqlServer.csproj" />
+  </Folder>
+</Solution>

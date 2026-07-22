@@ -60,9 +60,9 @@ Tier X  Remote Monitoring   direct to recording instance, else relay via
                             nearest server (separate concern from Tier 1-3)
 ```
 
-See `docs/c4-diagrams/` for the formal C4 Context and Container diagrams,
-and `docs/sequence-diagrams/` for the recording, sync, and tunnel-fallback
-flows.
+See `docs/c4-diagrams.md` for the formal C4 Context and Container diagrams,
+and `docs/sequence-diagrams.md` for the recording, sync, and tunnel-fallback
+flows (PlantUML source embedded inline in each Markdown file).
 
 ### 4.1 Tier 0 — Local App ↔ Local Daemon
 

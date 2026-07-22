@@ -14,16 +14,15 @@ off to Claude Code for implementation.
 4. **`docs/05-implementation-guide.md`** — phased build plan with entry/exit
    criteria and linked BDD features per phase.
 
-## Diagrams (PlantUML)
+## Diagrams (PlantUML, embedded in Markdown)
 
-- `docs/c4-diagrams/context.puml` — system context (C4 Level 1)
-- `docs/c4-diagrams/container.puml` — containers across all tiers (C4 Level 2)
-- `docs/c4-diagrams/component-daemon.puml` — daemon internals (C4 Level 3)
-- `docs/sequence-diagrams/event-recording-flow.puml`
-- `docs/sequence-diagrams/sync-nearest-neighbor.puml`
-- `docs/sequence-diagrams/remote-monitoring-tunnel-fallback.puml`
+- `docs/c4-diagrams.md` — system context (C4 L1), container (C4 L2), and
+  daemon component (C4 L3) diagrams
+- `docs/sequence-diagrams.md` — event recording flow, server mesh
+  reconciliation, and remote monitoring/tunnel fallback flows
 
-Render with any PlantUML renderer (VS Code PlantUML extension, plantuml.com
+Each diagram is a fenced ` ```plantuml ` block inline in the Markdown file —
+render with any PlantUML renderer (VS Code PlantUML extension, plantuml.com
 server, or local `plantuml.jar`). C4 diagrams pull the C4-PlantUML include
 from GitHub — vendor a local copy if you need offline rendering.
 

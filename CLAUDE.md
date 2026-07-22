@@ -38,8 +38,10 @@ tradeoff explicitly to the human first.
 - **Legacy interop**: WCF services may sit at integration boundaries with
   older on-prem systems — isolate behind an anti-corruption layer, do not
   let WCF contracts leak into the core event model.
-- **Diagrams**: PlantUML. C4 model for architecture diagrams
-  (`docs/c4-diagrams/`), Salt for UI wireframes if/when UI work starts.
+- **Diagrams**: PlantUML, embedded as fenced ` ```plantuml ` blocks directly
+  in Markdown (not standalone `.puml` files). C4 model for architecture
+  diagrams (`docs/c4-diagrams.md`), Salt for UI wireframes if/when UI work
+  starts.
 - **Behavior specs**: Gherkin/BDD feature files in `docs/bdd/features/`.
   Treat these as executable acceptance criteria — implement against them,
   don't just implement and retrofit a feature file afterward.
