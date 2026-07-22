@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SyncMesh.EventStore;
 
@@ -86,6 +87,10 @@ public sealed class EventStoreDbContextMigrationTests : IDisposable
 
     public void Dispose()
     {
+        // Microsoft.Data.Sqlite pools connections by default, which keeps a
+        // file handle open past the DbContext's disposal.
+        SqliteConnection.ClearAllPools();
+
         if (File.Exists(_dbPath))
         {
             File.Delete(_dbPath);

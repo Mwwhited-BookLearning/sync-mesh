@@ -9,9 +9,7 @@ namespace SyncMesh.EventStore.Tests.Postgres;
 // Requires a running Docker daemon.
 public sealed class EventStoreDbContextMigrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:18.3")
-        .Build();
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:18.3").Build();
 
     public Task InitializeAsync() => _container.StartAsync();
 

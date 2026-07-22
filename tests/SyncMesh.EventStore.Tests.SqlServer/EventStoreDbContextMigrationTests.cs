@@ -9,7 +9,8 @@ namespace SyncMesh.EventStore.Tests.SqlServer;
 // Requires a running Docker daemon.
 public sealed class EventStoreDbContextMigrationTests : IAsyncLifetime
 {
-    private readonly MsSqlContainer _container = new MsSqlBuilder().Build();
+    private readonly MsSqlContainer _container =
+        new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04").Build();
 
     public Task InitializeAsync() => _container.StartAsync();
 

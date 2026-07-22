@@ -4,15 +4,23 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      Feature files are linked in from docs/bdd/features/ (outside this
+      project's directory tree) — code-behind must go to obj/, not next to
+      the linked source, or it pollutes docs/ with generated .cs files.
+    -->
+    <ReqnrollUseIntermediateOutputPathForCodeBehind>true</ReqnrollUseIntermediateOutputPathForCodeBehind>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="Reqnroll.xUnit" Version="3.3.4" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
-    <PrivateAssets>all</PrivateAssets>
-        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
 
@@ -20,4 +28,14 @@
     <Using Include="Reqnroll" />
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <!--
+    Feature files stay in docs/bdd/features/ as the single source of truth
+    (per CLAUDE.md) — linked here rather than duplicated so Reqnroll can
+    generate code-behind and step bindings against them.
+  -->
+  <ItemGroup>
+    <ReqnrollFeatureFile Include="..\..\docs\bdd\features\*.feature" Link="Features\%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>
