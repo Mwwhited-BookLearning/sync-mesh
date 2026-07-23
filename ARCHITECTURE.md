@@ -169,6 +169,33 @@ don't let it go stale.
   bites ad hoc manual verification against a directly-run container —
   prefer `localhost` over `127.0.0.1` when doing that in this environment.
 
+## Mesh-wide monitoring dashboard and deployment-model sandbox (developer tooling)
+
+Two additions that aren't part of the phased implementation guide
+(`docs/05-implementation-guide.md`) — pure developer/operator tooling
+built on top of the Phase 4 telemetry mechanism and the topology shapes in
+`docs/08-deployment-models.md`:
+
+- **`src/SyncMesh.MeshMonitor.Api`** (ASP.NET Core + SignalR) subscribes to
+  `monitor.>` and serves both a REST snapshot (`GET /api/topology`) and a
+  live push (`MeshMonitorHub`) to **`web/mesh-monitor`**, a Vue 3 +
+  Element Plus + vis-network dashboard — see `UI-ARCHITECTURE.md` for the
+  frontend's own conventions (component file split, MVVM translation,
+  testing). `ServerStatus`/`DaemonStatus` (`SyncMesh.Contracts`) self-
+  describe each node's own configured connections and per-connection
+  event counts, so the whole topology is derived from what every node
+  already reports about itself — no separate topology config to maintain.
+- **`docker-compose.yml` (repo root) + `Properties/launchSettings.json`
+  profiles** on `SyncMesh.Daemon`/`SyncMesh.ServerHost` let any of the six
+  documented deployment models be stood up by hand for manual
+  observation — see `docs/10-running-deployment-models.md`. Mesh-model
+  nodes (intra-site-mesh, full-mesh) each get their own Postgres database
+  (not a shared one) specifically so convergence is genuinely proven
+  across independently-stored history, consistent with `ServerHost`
+  remaining Postgres/SqlServer-only at the server tier (no SQLite carve-
+  out was added for this sandbox — provisioning one database per node was
+  the correct fix, not loosening that convention).
+
 ## Configuration
 
 Every tunable (buffer caps, timeouts, retention, reconnect/backoff, subject

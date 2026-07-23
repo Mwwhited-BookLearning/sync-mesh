@@ -1,0 +1,222 @@
+# NATS infrastructure for the six deployment models in
+# docs/08-deployment-models.md — run with `docker compose --profile
+# <model> up -d`, then run the matching launch profile(s) for
+# SyncMesh.Daemon/SyncMesh.ServerHost (see docs/10-running-deployment-models.md).
+#
+# Deliberately NOT the same containers SyncMesh.AppHost orchestrates —
+# AppHost is the single, fixed local-dev topology (Phase 2); this file is
+# a sandbox for standing up any of the six *documented* topology shapes on
+# demand, one at a time, without touching AppHost's own config.
+#
+# Server-mesh nodes (intra-site-mesh, full-mesh) are plain standalone
+# JetStream servers with no special NATS-level config between them —
+# server-mesh replication is point-to-point at the application layer
+# (ServerMeshOptions.Peers / MeshForwarder dialing each peer's URL
+# directly), not native NATS gateway clustering. See
+# docs/adr/0002-nats-leaf-nodes-for-transport.md's 2026-07-23 (Phase 3)
+# Amendment.
+name: sync-mesh-deployment-models
+
+services:
+  # --- 1. Client isolated (no nearest server) ---
+  nats-client-isolated:
+    image: nats:2-alpine
+    profiles: ["client-isolated"]
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-client-isolated"]
+    volumes:
+      - ./deploy/nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24222:4222"
+
+  # --- 2. Client -> on-prem server ---
+  postgres-onprem:
+    image: postgres:18-alpine
+    profiles: ["client-onprem"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25432:5432"
+
+  nats-hub-onprem:
+    image: nats:2-alpine
+    profiles: ["client-onprem"]
+    volumes:
+      - ./deploy/nats-config/onprem-hub.conf:/etc/nats/nats-server.conf:ro
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    ports:
+      - "24223:4222"
+
+  nats-leaf-onprem:
+    image: nats:2-alpine
+    profiles: ["client-onprem"]
+    volumes:
+      - ./deploy/nats-config/onprem-leaf.conf:/etc/nats/nats-server.conf:ro
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    depends_on:
+      - nats-hub-onprem
+    ports:
+      - "24224:4222"
+
+  # --- 3. Client -> cloud server (no on-prem tier) ---
+  postgres-cloud:
+    image: postgres:18-alpine
+    profiles: ["client-cloud"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25433:5432"
+
+  nats-hub-cloud:
+    image: nats:2-alpine
+    profiles: ["client-cloud"]
+    volumes:
+      - ./deploy/nats-config/cloud-hub.conf:/etc/nats/nats-server.conf:ro
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    ports:
+      - "24225:4222"
+
+  nats-leaf-cloud:
+    image: nats:2-alpine
+    profiles: ["client-cloud"]
+    volumes:
+      - ./deploy/nats-config/cloud-leaf.conf:/etc/nats/nats-server.conf:ro
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    depends_on:
+      - nats-hub-cloud
+    ports:
+      - "24226:4222"
+
+  # --- 4. Standalone server (zero peers) ---
+  postgres-standalone:
+    image: postgres:18-alpine
+    profiles: ["standalone-server"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25434:5432"
+
+  nats-standalone-server:
+    image: nats:2-alpine
+    profiles: ["standalone-server"]
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-standalone-server"]
+    volumes:
+      - ./deploy/nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24227:4222"
+
+  # --- 5. Intra-site full mesh, inter-site limited gateway (3-node A-B-C;
+  #         B is the designated gateway — see ServerHost launch profiles) ---
+  # Each node gets its own database — the whole point is proving genuine
+  # convergence across independently-stored history, not a shared table
+  # that would make convergence trivially true.
+  postgres-mesh-a:
+    image: postgres:18-alpine
+    profiles: ["intra-site-mesh"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25435:5432"
+
+  postgres-mesh-b:
+    image: postgres:18-alpine
+    profiles: ["intra-site-mesh"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25436:5432"
+
+  postgres-mesh-c:
+    image: postgres:18-alpine
+    profiles: ["intra-site-mesh"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25437:5432"
+
+  nats-mesh-a:
+    image: nats:2-alpine
+    profiles: ["intra-site-mesh"]
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-mesh-a"]
+    volumes:
+      - ./deploy/nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24228:4222"
+
+  nats-mesh-b:
+    image: nats:2-alpine
+    profiles: ["intra-site-mesh"]
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-mesh-b"]
+    volumes:
+      - ./deploy/nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24229:4222"
+
+  nats-mesh-c:
+    image: nats:2-alpine
+    profiles: ["intra-site-mesh"]
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-mesh-c"]
+    volumes:
+      - ./deploy/nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24230:4222"
+
+  # --- 6. Full mesh everywhere (3-node, every node peers with every other) ---
+  postgres-full-a:
+    image: postgres:18-alpine
+    profiles: ["full-mesh"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25438:5432"
+
+  postgres-full-b:
+    image: postgres:18-alpine
+    profiles: ["full-mesh"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25439:5432"
+
+  postgres-full-c:
+    image: postgres:18-alpine
+    profiles: ["full-mesh"]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25440:5432"
+
+  nats-full-a:
+    image: nats:2-alpine
+    profiles: ["full-mesh"]
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-full-a"]
+    volumes:
+      - ./deploy/nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24231:4222"
+
+  nats-full-b:
+    image: nats:2-alpine
+    profiles: ["full-mesh"]
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-full-b"]
+    volumes:
+      - ./deploy/nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24232:4222"
+
+  nats-full-c:
+    image: nats:2-alpine
+    profiles: ["full-mesh"]
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-full-c"]
+    volumes:
+      - ./deploy/nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24233:4222"

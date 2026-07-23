@@ -1,0 +1,35 @@
+/* Shared, app-wide styles — deliberately the only stylesheet in this
+   project (besides Element Plus's own theme). Views intentionally have no
+   per-view style files; see UI-ARCHITECTURE.md. */
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+.app-shell {
+  height: 100vh;
+}
+
+.app-shell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topology-view {
+  height: calc(100vh - 220px);
+}
+
+.topology-graph {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+}
+
+.data-view__tabs {
+  margin-top: 12px;
+}

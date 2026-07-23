@@ -15,4 +15,27 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!--
+    Builds web/mesh-monitor and copies its output into wwwroot, so
+    `dotnet publish` produces a single deployable unit that serves the
+    dashboard itself (see Program.cs's UseStaticFiles/MapFallbackToFile).
+    Deliberately Publish-only, not Build — running a full vue-tsc + vite
+    build on every `dotnet build`/`dotnet run` would slow down normal .NET
+    iteration for no benefit, since local frontend development runs
+    against the Vite dev server (`npm run dev`, port 5173) proxying to
+    this API instead — see UI-ARCHITECTURE.md.
+  -->
+  <PropertyGroup>
+    <FrontendDir>$(MSBuildThisFileDirectory)..\..\web\mesh-monitor\</FrontendDir>
+  </PropertyGroup>
+
+  <Target Name="BuildFrontend" BeforeTargets="Publish" Condition="'$(SkipFrontendBuild)' != 'true'">
+    <Exec Command="npm install" WorkingDirectory="$(FrontendDir)" Condition="!Exists('$(FrontendDir)node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="$(FrontendDir)" />
+    <ItemGroup>
+      <FrontendDistFiles Include="$(FrontendDir)dist\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FrontendDistFiles)" DestinationFolder="$(MSBuildThisFileDirectory)wwwroot\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
