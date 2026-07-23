@@ -1,5 +1,5 @@
 using SyncMesh.EventStore;
-using SyncMesh.ServerHost;
+using SyncMesh.ServerHost.Nats;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -25,7 +25,13 @@ switch (provider)
         throw new InvalidOperationException($"Unsupported EventStore:Provider '{provider}'. Expected 'Postgres' or 'SqlServer'.");
 }
 
-builder.Services.AddHostedService<Worker>();
+builder.Services
+    .AddOptions<ServerNatsOptions>()
+    .Bind(builder.Configuration.GetSection(ServerNatsOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddHostedService<ApplyResponder>();
 
 var host = builder.Build();
 host.Run();

@@ -16,5 +16,6 @@
     <Project Path="tests/SyncMesh.EventStore.Tests.Postgres/SyncMesh.EventStore.Tests.Postgres.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.Sqlite/SyncMesh.EventStore.Tests.Sqlite.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.SqlServer/SyncMesh.EventStore.Tests.SqlServer.csproj" />
+    <Project Path="tests/SyncMesh.Sync.Tests/SyncMesh.Sync.Tests.csproj" />
   </Folder>
 </Solution>

@@ -1,6 +1,10 @@
+using Microsoft.Extensions.Options;
+using NATS.Client.Core;
+using NATS.Client.JetStream;
 using SyncMesh.Contracts;
 using SyncMesh.Daemon;
 using SyncMesh.Daemon.Ipc;
+using SyncMesh.Daemon.Nats;
 using SyncMesh.EventStore;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -10,6 +14,12 @@ builder.AddServiceDefaults();
 builder.Services
     .AddOptions<DaemonOptions>()
     .Bind(builder.Configuration.GetSection(DaemonOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<DaemonNatsOptions>()
+    .Bind(builder.Configuration.GetSection(DaemonNatsOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
@@ -23,9 +33,21 @@ builder.Services.AddSqliteEventStore(connectionString);
 // across every event this process produces. See docs/06-data-model.md §3.
 builder.Services.AddSingleton<HlcGenerator>();
 
+// One NATS connection per daemon process, to its embedded local leaf node
+// (never the nearest server directly) — see docs/00-design-document.md §4.2.
+builder.Services.AddSingleton(sp =>
+    new NatsConnection(new NatsOpts { Url = sp.GetRequiredService<IOptions<DaemonNatsOptions>>().Value.Url }));
+builder.Services.AddSingleton(sp => new NatsJSContext(sp.GetRequiredService<NatsConnection>()));
+
 builder.Services.AddScoped<LocalEventWriter>();
 builder.Services.AddScoped<LocalEventReader>();
+
+// Registration order matters: the generic host starts hosted services in
+// order, so the stream/consumer must exist before the IPC listener accepts
+// writes or the forwarder starts pulling.
+builder.Services.AddHostedService<DaemonJetStreamSetup>();
 builder.Services.AddHostedService<LocalIpcListener>();
+builder.Services.AddHostedService<EventForwarder>();
 
 var host = builder.Build();
 host.Run();

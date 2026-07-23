@@ -1,19 +1,30 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using NATS.Client.JetStream;
 using SyncMesh.Contracts;
+using SyncMesh.Daemon.Nats;
 using SyncMesh.EventStore;
 
 namespace SyncMesh.Daemon.Ipc;
 
 // Append-only write path: assigns GlobalEventId + HLC + the next
-// StreamVersion, then persists via EF Core. The (StreamId, StreamVersion)
+// StreamVersion, persists via EF Core, then publishes to the local
+// JetStream WorkQueue stream (publish-on-write — see
+// docs/05-implementation-guide.md Phase 2). The (StreamId, StreamVersion)
 // unique index (see SyncMesh.EventStore.EventStoreDbContext) is the
 // optimistic-concurrency guard — a conflicting concurrent write fails the
 // unique constraint and is retried with a freshly computed version.
+//
+// The local NATS leaf node is core daemon infrastructure, not an optional
+// extra — if the JetStream publish fails, the whole append fails rather
+// than silently accepting an event the leaf node never buffered.
 public sealed class LocalEventWriter(
     EventStoreDbContext db,
     HlcGenerator hlcGenerator,
-    IOptions<DaemonOptions> daemonOptions)
+    IOptions<DaemonOptions> daemonOptions,
+    NatsJSContext jetStream,
+    IOptions<DaemonNatsOptions> natsOptions)
 {
     private const int MaxConcurrencyRetries = 5;
 
@@ -46,6 +57,22 @@ public sealed class LocalEventWriter(
             try
             {
                 await db.SaveChangesAsync(ct);
+
+                var envelope = new EventEnvelope
+                {
+                    GlobalEventId = record.GlobalEventId,
+                    StreamId = record.StreamId,
+                    StreamVersion = record.StreamVersion,
+                    OriginSiteId = record.OriginSiteId,
+                    Hlc = hlc,
+                    RecordedAtUtc = record.RecordedAtUtc,
+                    EventType = record.EventType,
+                    PayloadJson = record.PayloadJson,
+                    PayloadSchemaVersion = record.PayloadSchemaVersion,
+                };
+                var subject = $"{natsOptions.Value.SubjectPrefix}.{record.OriginSiteId}.{record.StreamId}";
+                await jetStream.PublishAsync(subject, JsonSerializer.SerializeToUtf8Bytes(envelope), cancellationToken: ct);
+
                 return new AppendEventResponse
                 {
                     GlobalEventId = record.GlobalEventId,

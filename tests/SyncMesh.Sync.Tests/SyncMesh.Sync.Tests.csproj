@@ -12,7 +12,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.10" />
     <PackageReference Include="Testcontainers" Version="4.13.0" />
   </ItemGroup>
 
@@ -25,6 +24,7 @@
     <ProjectReference Include="..\..\src\SyncMesh.EventStore\SyncMesh.EventStore.csproj" />
     <ProjectReference Include="..\..\src\SyncMesh.EventStore.Migrations.Sqlite\SyncMesh.EventStore.Migrations.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\SyncMesh.Daemon\SyncMesh.Daemon.csproj" />
+    <ProjectReference Include="..\..\src\SyncMesh.ServerHost\SyncMesh.ServerHost.csproj" />
   </ItemGroup>
 
 </Project>

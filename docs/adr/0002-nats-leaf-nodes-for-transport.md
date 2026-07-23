@@ -73,6 +73,28 @@ transport choice above stands; these narrow how it's used. Supersedes the
 "capacity-plan the local WorkQueue cap" follow-up below with a concrete
 default instead of an open sizing exercise.
 
+## Amendment (2026-07-23) — forwarding mechanism, validated
+
+Phase 2 implementation: the daemon → server forwarding path does **not**
+use JetStream's built-in cross-leaf stream mirroring/sourcing feature —
+the specific mechanism this ADR's original risk note ("known reports of
+gaps in leaf-node mirror sync") and Open Question 2 were worried about.
+Instead: the local JetStream WorkQueue stream lives entirely on the leaf
+and is never mirrored anywhere; a forwarder pull-consumes it and sends
+each event as a plain core-NATS request to a responder on the hub side,
+acking the JetStream message only once the hub confirms idempotent apply.
+Core NATS pub/sub and request/reply already transparently cross the
+leaf-node boundary (no special config beyond the leaf connection itself)
+— this was validated with a manual two-container smoke test (hub + leaf,
+real `nats-server`, real leaf config): publish-across-leaf, request/reply-
+across-leaf, and — critically — stopping the hub mid-stream, confirming
+the leaf keeps buffering and auto-retries the leaf connection, then
+restarting the hub and confirming automatic reconnection plus a full,
+uncorrupted backlog drain. This sidesteps the specific rough edge flagged
+above: there is no cross-leaf JetStream mirror to have gaps in, because
+none is used. See `docs/05-implementation-guide.md` Phase 2 and `WORKPLAN.md` for how
+this bears on Open Question 2.
+
 - **Buffer cap has a floor and a configurable ceiling, not one fixed
   number.** Floor: never discard an event before the nearest server acks
   it — that's what WorkQueue retention already gives. Ceiling: defaults to

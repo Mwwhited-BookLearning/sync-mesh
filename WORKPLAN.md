@@ -15,7 +15,7 @@ phase status), see `ARCHITECTURE.md` instead.
 |---|---|---|
 | 0 — Project Setup | ✅ Done | [Data model](docs/06-data-model.md), [ADR-0001](docs/adr/0001-event-store-on-ef-core.md) |
 | 1 — Local Event Store (Daemon Side) | ✅ Done | [Data model](docs/06-data-model.md), [local-durability.feature](docs/bdd/features/local-durability.feature) (deferred — see notes), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [Event Recording Flow](docs/sequence-diagrams.md) |
-| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ⬜ Not started | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Questions 1 & 2) |
+| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | 🟡 Mostly done — see notes | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature) (not yet bound), [Design doc §8](docs/00-design-document.md) (Open Questions 1 & 2 — both resolved) |
 | 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ⬜ Not started | [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md) |
 | 4 — Passive Monitoring | ⬜ Not started | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature) |
 | 5 — Interactive Tunnel + Relay Fallback | ⬜ Not started | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security review) |
@@ -85,23 +85,31 @@ full-mesh-to-cloud, TLS + service-credential baseline):
   discussed changes its content, and two of its scenarios already have
   passing step bindings from this phase that textual changes would break.
 
-## Phase 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node)
+## Phase 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) — mostly done, gaps below
 
-**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Question 2 — leaf reconnect-sync risk; Open Question 1 resolved)
+**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see 2026-07-23 Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Question 2 — resolved; Open Question 1 resolved)
 
-**Entry criteria:** Phase 1 complete.
+**Entry criteria:** Phase 1 complete. ✅
 
-- [ ] Local nats-server instance (or embedded equivalent) configured as a leaf node, TLS-secured, authenticating with a registered service credential (not end-user identity)
-- [ ] Local JetStream stream, WorkQueue retention: default ceiling unbounded except by local disk (`Discard: New` on exhaustion), configurable to a smaller `MaxBytes`/`MaxAge`/`MaxMsgs` via `IOptions<T>`
-- [ ] Publish-on-write from daemon's event writer to local JetStream stream — one-way (daemon → server); no subscription/mirroring of server-side data back down to the daemon
-- [ ] Minimal server-side subscriber: ack + write to server-tier `EventStoreDbContext`
-- [ ] Idempotent apply (dedupe by `GlobalEventId`) on the server side
-- [ ] NATS added to `SyncMesh.AppHost` topology (leaf node ↔ nearest-server cluster)
+- [x] Local nats-server instance configured as a leaf node — real leaf-node config (`hub.conf`/`leaf.conf`), validated manually and via `SyncMesh.Sync.Tests`. Connections are currently plaintext/unauthenticated — **explicitly deferred, not a Phase 2 gap**: TLS + registered service credentials is ADR-0002's documented security *baseline* decision, but per the ops/pre-release convention (`ARCHITECTURE.md` → Operational vs. development ownership), wiring it up is out of scope for POC and gates Phase 6, same as the tunnel security review and retention sign-off.
+- [x] Local JetStream stream, WorkQueue retention: default ceiling unbounded except by local disk (`Discard: New` on exhaustion) — `SyncMesh.Daemon.Nats.DaemonJetStreamSetup`, configurable via `DaemonNatsOptions` (`IOptions<T>`)
+- [x] Publish-on-write from daemon's event writer to local JetStream stream — one-way (daemon → server); `LocalEventWriter` publishes after the local SQLite save succeeds, never mirrors server data back down
+- [x] Minimal server-side subscriber: `SyncMesh.ServerHost.Nats.ApplyResponder` — core-NATS request/reply (not JetStream stream mirroring — see ADR-0002 Amendment for why), ack + write to server-tier `EventStoreDbContext`
+- [x] Idempotent apply (dedupe by `GlobalEventId`) on the server side
+- [x] NATS added to `SyncMesh.AppHost` topology (two container resources, `nats-hub` + `nats-leaf`, real leafnode config files under `src/SyncMesh.AppHost/nats-config/`) — code compiles; not live-verified end-to-end in this sandbox due to the same DCP/container-start limitation observed in Phase 0
 
 **Exit criteria:**
-- [ ] `local-durability.feature` fully passes, including buffer removal after ack and cap-overflow behavior
-- [ ] `nearest-neighbor-sync.feature` on-prem connection + config-swap scenarios pass
-- [ ] Explicit extended-disconnect/reconnect test exists and passes, or the leaf-node reconnect-sync risk is documented as an accepted limitation with a mitigation plan
+- [~] `local-durability.feature`: 6 of the file's non-Phase-3/5 scenarios now pass (Background + retained-until-ack, removed-after-ack, disk-bound-default, buffered-read). **Still pending**: explicit-smaller-cap-override, recording-session-ends-no-residual, and no-nearest-server-configured — deferred for time, not blocked on anything; same harness pattern (`SyncMesh.Bdd.Tests/StepDefinitions/LocalDurabilityContext.cs`) extends to them directly.
+- [ ] `nearest-neighbor-sync.feature`: **not yet step-defined.** Its on-prem/cloud connection scenarios are straightforward with the existing `NatsLeafHubFixture`-style harness but weren't picked up this pass in favor of the disconnect/reconnect test and the retention scenarios.
+- [x] Explicit extended-disconnect/reconnect test **exists and passes** — `SyncMesh.Sync.Tests.DaemonToServerSyncTests.ExtendedDisconnectThenReconnect_AllBufferedEventsEventuallyReachTheServer_NoLossNoDuplication`: hub container actually stopped (not a network partition), events written during the outage, hub restarted, all events confirmed applied exactly once with zero loss/duplication. See ADR-0002's 2026-07-23 Amendment for what this proved and why the design sidesteps the specific mirror-sync risk that was originally flagged.
+
+**Follow-ups carried to a later pass** (not required to call Phase 2 done, but real gaps):
+1. `nearest-neighbor-sync.feature` step definitions.
+2. The three remaining `local-durability.feature` scenarios above.
+3. Live end-to-end verification of the Aspire AppHost NATS topology outside this sandbox (same caveat as Phase 0's Postgres container).
+
+**Deferred to Phase 6 (pre-release), not Phase 2 follow-ups:**
+- TLS + registered service credentials for the leaf/gateway connections (ADR-0002/ADR-0004 security baseline) — confirmed out of scope for POC.
 
 ## Phase 3 — Server Mesh Reconciliation (Gateways/Supercluster)
 
@@ -159,6 +167,7 @@ pre-production-readiness phase — nothing here is required for a POC.
       `docs/07-operations-guide.md` for the ops-owned/dev-owned split)
 - [ ] Full mesh validated/decided default-vs-opt-in given actual site count and instability characteristics (Open Question 4) — standalone and intra-site full mesh already work by this point
 - [ ] Load/chaos test leaf-node reconnect behavior under realistic outage durations/volumes (Open Question 2)
+- [ ] Wire up TLS + registered service credentials for NATS leaf/gateway connections and the tunnel path (ADR-0002/ADR-0004 security baseline) — Phase 2/5 shipped plaintext/unauthenticated by design; this is where that gets closed
 - [ ] Complete the dedicated tunnel/relay security review (Open Question 5) and obtain sign-off — required before any production deployment, not before this phase's own completion in a non-production context
 - [x] ~~WCF/legacy interop scope~~ (Open Question 6) — resolved: out of scope for this project
 

@@ -7,7 +7,7 @@ public class LocalIpcPathTests
     [Fact]
     public async Task AppendEvent_PersistsAndAssignsGlobalEventIdAndHlc()
     {
-        await using var host = new DaemonTestHost();
+        await using var host = await DaemonTestHost.CreateAsync();
         await host.StartAsync();
         var client = host.CreateClient();
 
@@ -27,7 +27,7 @@ public class LocalIpcPathTests
     [Fact]
     public async Task AppendEvent_AssignsSequentialStreamVersionsPerStream()
     {
-        await using var host = new DaemonTestHost();
+        await using var host = await DaemonTestHost.CreateAsync();
         await host.StartAsync();
         var client = host.CreateClient();
         var streamId = Guid.NewGuid();
@@ -52,7 +52,7 @@ public class LocalIpcPathTests
     [Fact]
     public async Task AppendEvent_ConcurrentWritesToSameStream_AllGetUniqueSequentialVersions()
     {
-        await using var host = new DaemonTestHost();
+        await using var host = await DaemonTestHost.CreateAsync();
         await host.StartAsync();
         var streamId = Guid.NewGuid();
 
@@ -76,7 +76,7 @@ public class LocalIpcPathTests
     [Fact]
     public async Task ReadEvents_ReturnsWhatWasWritten_OrderedByStreamVersion_ServedFromLocalStoreOnly()
     {
-        await using var host = new DaemonTestHost();
+        await using var host = await DaemonTestHost.CreateAsync();
         await host.StartAsync();
         var client = host.CreateClient();
         var streamId = Guid.NewGuid();
@@ -95,7 +95,7 @@ public class LocalIpcPathTests
     [Fact]
     public async Task ReadEvents_ForUnknownStream_ReturnsEmpty()
     {
-        await using var host = new DaemonTestHost();
+        await using var host = await DaemonTestHost.CreateAsync();
         await host.StartAsync();
         var client = host.CreateClient();
 
@@ -107,7 +107,7 @@ public class LocalIpcPathTests
     [Fact]
     public async Task WrittenEvent_SurvivesAFreshDbContext_SimulatingADaemonRestart()
     {
-        await using var host = new DaemonTestHost();
+        await using var host = await DaemonTestHost.CreateAsync();
         await host.StartAsync();
         var client = host.CreateClient();
         var streamId = Guid.NewGuid();

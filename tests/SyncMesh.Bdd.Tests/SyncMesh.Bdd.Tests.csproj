@@ -18,6 +18,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="Reqnroll.MsTest" Version="3.3.4" />
     <PackageReference Include="MSTest" Version="4.3.2" />
+    <PackageReference Include="Testcontainers" Version="4.13.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,6 +30,7 @@
     <ProjectReference Include="..\..\src\SyncMesh.Contracts\SyncMesh.Contracts.csproj" />
     <ProjectReference Include="..\..\src\SyncMesh.EventStore\SyncMesh.EventStore.csproj" />
     <ProjectReference Include="..\..\src\SyncMesh.EventStore.Migrations.Sqlite\SyncMesh.EventStore.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="..\..\src\SyncMesh.Daemon\SyncMesh.Daemon.csproj" />
   </ItemGroup>
 
   <!--

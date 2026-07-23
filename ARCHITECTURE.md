@@ -32,6 +32,41 @@ don't let it go stale.
   singleton (its counter must be monotonic across everything this daemon
   process produces).
 
+## Daemon → server forwarding (NATS leaf node)
+
+- **Pull-consume + core-NATS request/reply, not JetStream stream
+  mirroring.** `SyncMesh.Daemon.Nats.EventForwarder` pull-consumes the
+  local WorkQueue stream and sends each event as a plain core-NATS request
+  to the hub; `SyncMesh.ServerHost.Nats.ApplyResponder` replies once it's
+  idempotently applied. The JetStream message is acked only on a
+  successful reply — never on send. This deliberately avoids JetStream's
+  built-in cross-leaf stream mirroring/sourcing feature, which is the
+  specific mechanism ADR-0002's original risk note and design doc Open
+  Question 2 were worried about ("known reports of gaps in leaf-node
+  mirror sync"). Plain core-NATS pub/sub and request/reply already cross
+  the leaf-node boundary transparently with no special config — see
+  ADR-0002's 2026-07-23 Amendment for how this was validated (manual
+  two-container smoke test, then an automated stop/restart-the-hub test in
+  `SyncMesh.Sync.Tests`).
+- **A background consume loop must not die silently on a fault.**
+  `EventForwarder` wraps its `await foreach` in an outer retry loop —
+  early versions let a single faulted pull-request exit `ExecuteAsync` for
+  good, silently stranding every buffered event un-acked even after the
+  hub recovered. A `BackgroundService` that can exit early from an
+  unhandled exception is a bug in itself, independent of what caused the
+  original fault.
+- **Testing container restarts needs a fixed host port, not a random
+  one.** Testcontainers' dynamic port allocation does not reliably survive
+  a `StopAsync`/`StartAsync` cycle on the same container — the previously
+  mapped host port can become unreachable after restart. This is a test-
+  harness artifact, not a real NATS/production concern (a real hub's
+  address doesn't change under it), but it will manifest as exactly the
+  kind of "never recovers after reconnect" failure you'd wrongly attribute
+  to the leaf-node/forwarder design if you don't know to check for it
+  first. Any test that stops/starts a container it will reconnect to later
+  needs an explicit fixed `WithPortBinding(hostPort, containerPort)` for
+  that container specifically.
+
 ## Configuration
 
 Every tunable (buffer caps, timeouts, retention, reconnect/backoff, subject
