@@ -49,4 +49,15 @@ builder.AddProject<Projects.SyncMesh_Daemon>("daemon")
     })
     .WaitFor(natsLeaf);
 
+// Mesh-wide passive-monitoring dashboard (backend) — subscribes to
+// monitor.> on the hub side, same vantage point ApplyResponder/
+// ServerMonitorPublisher already use. See docs/00-design-document.md §4.5.
+builder.AddProject<Projects.SyncMesh_MeshMonitor_Api>("mesh-monitor-api")
+    .WithEnvironment(context =>
+    {
+        var endpoint = natsHub.GetEndpoint("client");
+        context.EnvironmentVariables["MeshMonitor__NatsUrl"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.Host)}:{endpoint.Property(EndpointProperty.Port)}");
+    })
+    .WaitFor(natsHub);
+
 builder.Build().Run();

@@ -22,6 +22,14 @@ public sealed class ApplyResponder(
     IServiceScopeFactory scopeFactory,
     ILogger<ApplyResponder> logger) : BackgroundService
 {
+    private long _appliedCount;
+
+    // Count of events durably applied here for the first time (excludes
+    // duplicate-delivery no-ops) — surfaced in passive-monitoring
+    // telemetry (ServerMonitorPublisher) as this server's own throughput,
+    // regardless of whether the request came from a daemon or a peer.
+    public long AppliedCount => Interlocked.Read(ref _appliedCount);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await foreach (var msg in connection.SubscribeAsync<byte[]>(options.Value.ApplyRequestSubject, cancellationToken: stoppingToken))
@@ -107,6 +115,8 @@ public sealed class ApplyResponder(
 
             throw;
         }
+
+        Interlocked.Increment(ref _appliedCount);
 
         // Relay to this server's own peers only if it genuinely didn't
         // exist yet here (skipped on the duplicate/no-op paths above) —

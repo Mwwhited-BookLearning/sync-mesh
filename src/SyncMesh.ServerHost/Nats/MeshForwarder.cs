@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
 using NATS.Client.JetStream;
@@ -16,6 +17,12 @@ public sealed class MeshForwarder(
     ILogger<MeshForwarder> logger) : BackgroundService
 {
     private static readonly TimeSpan RestartDelay = TimeSpan.FromSeconds(2);
+    private readonly ConcurrentDictionary<string, long> _forwardedCounts = new();
+
+    // Count of events successfully forwarded and acked, per configured
+    // peer — surfaced in passive-monitoring telemetry (ServerMonitorPublisher)
+    // as this server's own self-reported traffic on each mesh connection.
+    public IReadOnlyDictionary<string, long> ForwardedCountsByPeerSiteId => _forwardedCounts;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -55,6 +62,7 @@ public sealed class MeshForwarder(
                         if (reply.Data is not null)
                         {
                             await msg.AckAsync(cancellationToken: stoppingToken);
+                            _forwardedCounts.AddOrUpdate(peer.SiteId, 1, static (_, count) => count + 1);
                         }
                         else
                         {

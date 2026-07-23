@@ -41,6 +41,12 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services
+    .AddOptions<ServerMonitorOptions>()
+    .Bind(builder.Configuration.GetSection(ServerMonitorOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 // One NATS connection per server process, to its own local cluster — never
 // a shared connection into a peer's cluster (see docs/adr/0002-nats-leaf-
 // nodes-for-transport.md's 2026-07-23 (Phase 3) Amendment: MeshForwarder
@@ -53,9 +59,20 @@ builder.Services.AddSingleton(sp => new NatsJSContext(sp.GetRequiredService<Nats
 // order: the MESH_OUTBOUND stream/consumers must exist before
 // ApplyResponder starts relaying into it or MeshForwarder starts pulling
 // from it.
+//
+// ApplyResponder/MeshForwarder are registered as their own singletons (not
+// just AddHostedService<T>, which only makes T resolvable as
+// IHostedService) so ServerMonitorPublisher can read their live counters —
+// the same running instances the host starts.
 builder.Services.AddHostedService<ServerMeshSetup>();
-builder.Services.AddHostedService<ApplyResponder>();
-builder.Services.AddHostedService<MeshForwarder>();
+builder.Services.AddSingleton<ApplyResponder>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ApplyResponder>());
+builder.Services.AddSingleton<MeshForwarder>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MeshForwarder>());
+
+// Passive monitoring (Tier X) — architecturally separate from the
+// event-sync path above. See docs/00-design-document.md §4.5.
+builder.Services.AddHostedService<ServerMonitorPublisher>();
 
 var host = builder.Build();
 

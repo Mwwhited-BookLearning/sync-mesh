@@ -114,6 +114,7 @@ public sealed class MonitorContext : IAsyncDisposable
         services.AddSingleton(sp => new NatsConnection(new NatsOpts { Url = sp.GetRequiredService<IOptions<DaemonNatsOptions>>().Value.Url }));
         services.AddSingleton(sp => new NatsJSContext(sp.GetRequiredService<NatsConnection>()));
         services.AddSingleton<DaemonJetStreamSetup>();
+        services.AddSingleton<EventForwarder>();
         services.AddSingleton<MonitorPublisher>();
 
         _daemonProvider = services.BuildServiceProvider();

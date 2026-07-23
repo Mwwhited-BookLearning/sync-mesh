@@ -16,6 +16,7 @@ namespace SyncMesh.Daemon.Nats;
 public sealed class MonitorPublisher(
     NatsConnection connection,
     NatsJSContext jetStream,
+    EventForwarder forwarder,
     IOptions<DaemonOptions> daemonOptions,
     IOptions<DaemonNatsOptions> natsOptions,
     IOptions<DaemonMonitorOptions> monitorOptions,
@@ -39,6 +40,8 @@ public sealed class MonitorPublisher(
                     TimestampUtc = DateTimeOffset.UtcNow,
                     BufferedEventCount = bufferedCount,
                     ConnectedToNearestServer = connection.ConnectionState == NatsConnectionState.Open,
+                    NearestServerUrl = natsOptions.Value.Url,
+                    EventsForwardedCount = forwarder.ForwardedCount,
                 };
 
                 await connection.PublishAsync(subject, JsonSerializer.SerializeToUtf8Bytes(status), cancellationToken: stoppingToken);

@@ -15,6 +15,12 @@ public sealed class EventForwarder(
     ILogger<EventForwarder> logger) : BackgroundService
 {
     private static readonly TimeSpan RestartDelay = TimeSpan.FromSeconds(2);
+    private long _forwardedCount;
+
+    // Count of events successfully forwarded and acked by the nearest
+    // server — surfaced in passive-monitoring telemetry (MonitorPublisher)
+    // as the daemon's own self-reported traffic on this connection.
+    public long ForwardedCount => Interlocked.Read(ref _forwardedCount);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -46,6 +52,7 @@ public sealed class EventForwarder(
                         if (reply.Data is not null)
                         {
                             await msg.AckAsync(cancellationToken: stoppingToken);
+                            Interlocked.Increment(ref _forwardedCount);
                         }
                         else
                         {

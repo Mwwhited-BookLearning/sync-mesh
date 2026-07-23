@@ -54,7 +54,12 @@ builder.Services.AddScoped<LocalEventReader>();
 // writes or the forwarder starts pulling.
 builder.Services.AddHostedService<DaemonJetStreamSetup>();
 builder.Services.AddHostedService<LocalIpcListener>();
-builder.Services.AddHostedService<EventForwarder>();
+
+// Registered as its own singleton (not just AddHostedService<T>, which
+// only makes T resolvable as IHostedService) so MonitorPublisher can read
+// its live ForwardedCount — the same running instance the host starts.
+builder.Services.AddSingleton<EventForwarder>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EventForwarder>());
 
 // Passive monitoring (Tier X) — architecturally separate from the event-
 // sync path above: its own subject namespace, no JetStream, no shared
