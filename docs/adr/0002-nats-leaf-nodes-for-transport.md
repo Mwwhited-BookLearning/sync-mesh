@@ -144,6 +144,65 @@ this bears on Open Question 2.
   remains required before production; this is the transport-level
   baseline it builds on).
 
+## Amendment (2026-07-23, Phase 3) — server-mesh replication mechanism
+
+Phase 3 implementation: server↔server replication does **not** use NATS's
+native `gateway { }` server-block clustering, nor JetStream's built-in
+stream mirroring/sourcing across clusters — the same category of mechanism
+already rejected at the leaf-node hop in the amendment above, for the same
+reason (JetStream spanning a cluster/gateway boundary natively has rough
+edges and isn't the validated, well-understood path). Instead, server-mesh
+replication reuses the exact pattern already validated for daemon → server
+forwarding, generalized from "one nearest server" to "N configured peers":
+
+- Each `ServerHost` owns a **local-only** JetStream stream (`MESH_OUTBOUND`)
+  that never leaves that server's own NATS instance. Whenever
+  `ApplyResponder` durably applies an event for the **first time** —
+  whether the request came from one of its own daemons or from a peer
+  server calling the exact same apply endpoint — it publishes that event
+  onto its own `MESH_OUTBOUND` stream. A duplicate-delivery no-op (the
+  event was already applied) does **not** re-publish, which is what stops
+  gossip amplification: an event can bounce back to its origin server at
+  most once (origin re-applies it as a no-op and does not re-relay).
+- For each configured peer, the owning server runs its own durable
+  JetStream consumer against its own `MESH_OUTBOUND` stream (named after
+  the peer, e.g. `TO_<peerSiteId>`) and a `MeshForwarder` background loop
+  that pull-consumes it and forwards each event as a **plain core-NATS
+  request** directly to that peer's own `ApplyRequestSubject` — a brand
+  new point-to-point `NatsConnection` to the peer's configured URL, not a
+  shared gateway-routed connection. This is structurally identical to
+  `EventForwarder`/`ApplyResponder` from the leaf-node hop, just running
+  once per configured peer instead of once for a single nearest server.
+  The local JetStream message is acked only once the peer confirms
+  idempotent apply — same floor-until-acked guarantee as the daemon buffer.
+- The stream uses **Interest retention**, not WorkQueue: multiple
+  independent peer consumers must each receive their own copy of every
+  event, which WorkQueue (single-consumer, ack-removes-for-everyone)
+  cannot express. A message is removed from `MESH_OUTBOUND` once every
+  currently-registered peer consumer has acked it. The disk-bound
+  ceiling/`Discard: New` behavior from the leaf-node buffer (§4.2) applies
+  identically here: peers list is config, not code, and a durable consumer
+  is provisioned per peer up front so Interest retention has something to
+  hold a message for.
+- **Every server both publishes its own newly-applied events (regardless
+  of where they originated) and applies incoming events from every
+  configured peer.** This is what makes designated-gateway/hub-and-spoke
+  topologies (§4.4) converge without every server needing a direct
+  connection to every other: an event relayed transitively through a
+  hub server is re-published on the hub's own `MESH_OUTBOUND` the same as
+  a locally-originated one, so the hub's other peers receive it too.
+  Convergence follows from gossip + idempotent dedup on `GlobalEventId`,
+  not from any particular graph shape — a full mesh, a single designated
+  gateway per site, or any topology in between all converge the same way,
+  satisfying "topology is a config concern, not a code branch."
+- What "servers connect to each other via NATS gateway connections" means
+  in practice, then, is an **operator-configured list of peer
+  URLs/credentials per server** (`ServerMeshOptions.Peers`), not a literal
+  NATS `gateway { }` block. Regular core-NATS pub/sub (monitoring subjects,
+  §4.5) may still ride on true NATS clustering/gateways if that's how the
+  deployment is wired — this amendment is specifically about the
+  event-sync replication path.
+
 ## Related
 
 `docs/00-design-document.md` §4.2–4.5, `docs/adr/0003-hybrid-logical-clock-ordering.md`,

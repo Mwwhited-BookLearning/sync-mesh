@@ -218,6 +218,8 @@ public sealed class DaemonToServerSyncTests(NatsLeafHubFixture fixture, ITestOut
             o.Url = fixture.HubClientUrl;
             o.ApplyRequestSubject = $"server.apply.request.{testId}";
         });
+        services.AddSingleton(sp => new NatsConnection(new NatsOpts { Url = sp.GetRequiredService<IOptions<ServerNatsOptions>>().Value.Url }));
+        services.AddSingleton(sp => new NatsJSContext(sp.GetRequiredService<NatsConnection>()));
         services.AddSingleton<ApplyResponder>();
 
         var provider = services.BuildServiceProvider();

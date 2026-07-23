@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using NATS.Client.Core;
+using NATS.Client.JetStream;
 using SyncMesh.EventStore;
 using SyncMesh.ServerHost.Nats;
 
@@ -32,7 +35,27 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services
+    .AddOptions<ServerMeshOptions>()
+    .Bind(builder.Configuration.GetSection(ServerMeshOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+// One NATS connection per server process, to its own local cluster — never
+// a shared connection into a peer's cluster (see docs/adr/0002-nats-leaf-
+// nodes-for-transport.md's 2026-07-23 (Phase 3) Amendment: MeshForwarder
+// dials each peer directly instead).
+builder.Services.AddSingleton(sp =>
+    new NatsConnection(new NatsOpts { Url = sp.GetRequiredService<IOptions<ServerNatsOptions>>().Value.Url }));
+builder.Services.AddSingleton(sp => new NatsJSContext(sp.GetRequiredService<NatsConnection>()));
+
+// Registration order matters — the generic host starts hosted services in
+// order: the MESH_OUTBOUND stream/consumers must exist before
+// ApplyResponder starts relaying into it or MeshForwarder starts pulling
+// from it.
+builder.Services.AddHostedService<ServerMeshSetup>();
 builder.Services.AddHostedService<ApplyResponder>();
+builder.Services.AddHostedService<MeshForwarder>();
 
 var host = builder.Build();
 

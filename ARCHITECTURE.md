@@ -89,6 +89,56 @@ don't let it go stale.
   `host.Run()`. Any new host that owns an `EventStoreDbContext` needs the
   same startup step — don't assume it's someone else's job.
 
+## Server-mesh replication (NATS gateway hop, Phase 3)
+
+- **Point-to-point per-peer forwarding, not native NATS `gateway { }`
+  clustering or JetStream cross-cluster mirroring.** Same category of
+  decision as the leaf-node hop above, extended to server↔server: each
+  `ServerHost` owns a **local-only** JetStream stream (`MESH_OUTBOUND`,
+  see `SyncMesh.ServerHost.Nats.ServerMeshSetup`) and runs one
+  `MeshForwarder` loop per configured peer (`ServerMeshOptions.Peers`),
+  dialing that peer's URL directly and forwarding via plain core-NATS
+  request/reply to its `ApplyRequestSubject` — the exact same endpoint a
+  daemon uses. No code distinguishes "a request from a daemon" from "a
+  request from a peer server." See `docs/adr/0002-nats-leaf-nodes-for-
+  transport.md`'s 2026-07-23 (Phase 3) Amendment for the full rationale.
+- **Interest retention, not WorkQueue, for `MESH_OUTBOUND`.** Multiple
+  independent peers each need their own copy of every event; WorkQueue
+  (ack-by-any-consumer removes it for everyone) is wrong here. A durable
+  consumer per peer (`TO_<peerSiteId>`) must be provisioned *before* any
+  message is published, or Interest retention has no registered interest
+  to hold it for.
+- **Gossip + idempotent dedup is what makes hub-and-spoke topologies
+  converge, not full mesh.** `ApplyResponder` relays to `MESH_OUTBOUND`
+  on *any* genuinely-new insert — regardless of whether the event
+  originated from this server's own daemons or arrived from a peer. This
+  is what lets a designated "gateway" server relay events it merely
+  *received* onward to its own other peers (proven with a 3-node A–B–C
+  test where A and C only peer with B). The dedupe-by-`GlobalEventId`
+  no-op path is what stops this from amplifying forever: an event can
+  bounce back to its origin at most once.
+- **A `DbUpdateException` on insert is not automatically a safe
+  duplicate.** Only a `GlobalEventId` collision (the primary key) is —
+  that's a legitimate race between, say, a daemon's direct write and a
+  peer's gossiped copy of the same event arriving concurrently. A
+  `(StreamId, StreamVersion)` collision from a *different* `GlobalEventId`
+  is a real data-integrity problem and must be rethrown, not silently
+  swallowed. Found via a test bug (two different simulated events
+  sharing a `StreamId` with the same hardcoded `StreamVersion`) that the
+  original catch-and-return handling masked completely — `ApplyResponder`
+  now re-checks whether *this specific* `GlobalEventId` is what's present
+  before treating the exception as a no-op.
+- **JetStream's default 30s `AckWait` is too slow for inter-server
+  forwarding.** A transient first-attempt race (the peer's `ApplyResponder`
+  subscription not yet live when the forwarder's first pull lands) looks
+  identical to a real outage until the 30s redelivery fires — `ServerMeshOptions.AckWait`
+  defaults to 5s instead, tuned specifically against this race.
+- **Cucumber Expressions treat `/` as alternative-text syntax.** A step
+  attribute text of `"...gateway/supercluster connection"` parses as
+  "gateway" OR "supercluster", not the literal string with a slash in it —
+  it silently fails to match a feature file step containing that same
+  literal text. Escape it (`gateway\/supercluster`) to match literally.
+
 ## Configuration
 
 Every tunable (buffer caps, timeouts, retention, reconnect/backoff, subject

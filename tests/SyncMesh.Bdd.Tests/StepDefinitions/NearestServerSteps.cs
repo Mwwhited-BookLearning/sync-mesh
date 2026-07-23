@@ -37,6 +37,7 @@ public sealed class NearestServerSteps(NearestServerContext context)
 
     [Then("the daemon establishes a leaf node connection to the on-prem cluster")]
     [Then("the daemon establishes a leaf node connection directly to the cloud cluster")]
+    [Then("the daemon establishes a leaf node connection to the cloud cluster")]
     [Then("the leaf node connection is established successfully")]
     public async Task ThenTheDaemonEstablishesALeafNodeConnection()
     {
