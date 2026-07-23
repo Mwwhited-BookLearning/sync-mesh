@@ -133,6 +133,48 @@ configured once, in `vite.config.ts`, not scattered through service code
 (`services/api.ts` and `services/signalrClient.ts` both just use relative
 paths).
 
+`SyncMesh.MeshMonitor.Api.csproj` has a `BuildFrontend` MSBuild target
+(`BeforeTargets="Build"`) that runs `npm run build` and copies
+`web/mesh-monitor/dist/**` into `wwwroot`, so **every** `dotnet build`/
+`dotnet run` — including via `SyncMesh.AppHost`, so the Aspire dashboard's
+URL for this resource actually opens a working dashboard — serves the
+real UI, not just `dotnet publish`. It's declared with MSBuild
+`Inputs`/`Outputs` (inputs: everything under `web/mesh-monitor/src` plus
+its config files; output: `wwwroot/index.html`) so a build with no
+frontend changes since the last one is a fast up-to-date check, not a
+full `vue-tsc` + `vite build` every time — confirmed by testing (first
+build ~15s with the frontend rebuild, second unchanged build ~2.5s,
+skipping the rebuild entirely).
+
+This is a **reversal** of an earlier version of this target, which was
+deliberately `Publish`-only to avoid slowing down `dotnet build`/`dotnet
+run` iteration — before the Aspire-dashboard-URL requirement made
+"`dotnet run` alone doesn't serve anything" a real problem, not just a
+local-dev inconvenience solved by the Vite dev server. The incremental
+`Inputs`/`Outputs` check is what makes running it on every `Build` cheap
+enough to be worth that trade-off.
+
+Publish needs no separate copy step: `dotnet publish` invokes `Build`
+first, so `BuildFrontend` has already populated `wwwroot` by the time
+Publish's own Static Web Assets discovery runs — confirmed by testing
+(`dotnet publish` now produces `wwwroot/*.br`/`*.gz` compressed variants
+too, proof the standard SWA pipeline picked the content up correctly).
+An earlier attempt hooked `AfterTargets="Publish"` instead, back when the
+frontend was only built at Publish time — SWA's manifest computation
+runs too early in that ordering to pick up wwwroot content added that
+late, which is why that hook existed and why a plain `BeforeTargets=
+"Publish"` copy silently produced an empty `wwwroot` in the actual
+publish output (confirmed by testing: files landed in the source
+project's `wwwroot/` but not in `$(PublishDir)`, a 404 the first time
+this was tried). Once the frontend build moved to `Build` time, the
+separate `Publish`-time step stopped being necessary and was removed.
+
+**During local frontend iteration**, still use `npm run dev` in
+`web/mesh-monitor` (`http://localhost:5173`, proxying to the API) rather
+than rebuilding via `dotnet build` on every change — the MSBuild target
+is what makes `dotnet run`/AppHost serve *something* correct without
+extra steps, not a replacement for Vite's hot-reloading dev loop.
+
 ## Testing
 
 - **Unit tests** (`tests/unit/*.spec.ts`, run via `npm run test:unit` /
@@ -162,7 +204,6 @@ paths).
   auto-import (`unplugin-vue-components` + `unplugin-auto-import`) would
   shrink this meaningfully if bundle size becomes a real concern — not
   done here since it's an optimization, not a correctness issue.
-- `web/mesh-monitor`'s build output isn't yet wired into `SyncMesh.MeshMonitor.Api`'s
-  `wwwroot` by any build step (`dotnet build`/CI) — today that's a manual
-  `npm run build` + copy. Automating it (an MSBuild target, or a CI step)
-  is a reasonable follow-up once this dashboard is used beyond local dev.
+- ~~`web/mesh-monitor`'s build output isn't yet wired into
+  `SyncMesh.MeshMonitor.Api`'s `wwwroot`~~ — resolved: see the
+  `BuildFrontend` MSBuild target described in "Dev workflow" above.

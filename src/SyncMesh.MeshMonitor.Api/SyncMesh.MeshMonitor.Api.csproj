@@ -16,20 +16,32 @@
   </PropertyGroup>
 
   <!--
-    Builds web/mesh-monitor and copies its output into wwwroot, so
-    `dotnet publish` produces a single deployable unit that serves the
-    dashboard itself (see Program.cs's UseStaticFiles/MapFallbackToFile).
-    Deliberately Publish-only, not Build — running a full vue-tsc + vite
-    build on every `dotnet build`/`dotnet run` would slow down normal .NET
-    iteration for no benefit, since local frontend development runs
-    against the Vite dev server (`npm run dev`, port 5173) proxying to
-    this API instead — see UI-ARCHITECTURE.md.
+    Builds web/mesh-monitor and copies its output into wwwroot, so both
+    `dotnet run`/`dotnet build` (e.g. via SyncMesh.AppHost, so the Aspire
+    dashboard's URL for this resource actually opens the dashboard) and
+    `dotnet publish` (a single deployable unit) serve a working UI. See
+    Program.cs's UseStaticFiles/MapFallbackToFile.
   -->
   <PropertyGroup>
     <FrontendDir>$(MSBuildThisFileDirectory)..\..\web\mesh-monitor\</FrontendDir>
   </PropertyGroup>
 
-  <Target Name="BuildFrontend" BeforeTargets="Publish" Condition="'$(SkipFrontendBuild)' != 'true'">
+  <ItemGroup>
+    <FrontendSourceFiles Include="$(FrontendDir)src\**\*.*" />
+    <FrontendSourceFiles Include="$(FrontendDir)index.html;$(FrontendDir)package.json;$(FrontendDir)package-lock.json;$(FrontendDir)vite.config.ts;$(FrontendDir)tsconfig*.json" />
+  </ItemGroup>
+
+  <!--
+    BeforeTargets="Build", with Inputs/Outputs for MSBuild's incremental-
+    build check — a build with no frontend source changes since the last
+    one skips straight to an up-to-date check (fast), not a full vue-tsc +
+    vite rebuild every time. Safe to run at Build time (unlike Publish,
+    below): at runtime, UseStaticFiles just serves whatever's physically
+    in wwwroot when a request arrives — there's no build-time manifest to
+    go stale against for a plain `dotnet run`.
+  -->
+  <Target Name="BuildFrontend" BeforeTargets="Build" Condition="'$(SkipFrontendBuild)' != 'true'"
+          Inputs="@(FrontendSourceFiles)" Outputs="$(MSBuildThisFileDirectory)wwwroot\index.html">
     <Exec Command="npm install" WorkingDirectory="$(FrontendDir)" Condition="!Exists('$(FrontendDir)node_modules')" />
     <Exec Command="npm run build" WorkingDirectory="$(FrontendDir)" />
     <ItemGroup>
@@ -37,5 +49,17 @@
     </ItemGroup>
     <Copy SourceFiles="@(FrontendDistFiles)" DestinationFolder="$(MSBuildThisFileDirectory)wwwroot\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
+
+  <!--
+    No separate Publish-time copy step needed: Publish invokes Build first,
+    so BuildFrontend above has already populated wwwroot by the time
+    Publish's own Static Web Assets discovery runs — confirmed by testing
+    (dotnet publish now produces wwwroot/*.br and *.gz compressed variants
+    too, proof the standard SWA pipeline picked the content up correctly).
+    An earlier version of this file hooked AfterTargets="Publish" instead,
+    from back when the frontend was only built at Publish time — too late
+    in that ordering for SWA's manifest, which is why that hook existed.
+    Once the frontend build moved to Build time, it stopped being needed.
+  -->
 
 </Project>

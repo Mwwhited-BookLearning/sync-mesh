@@ -371,6 +371,22 @@ ambiguous which phase actually gates it.
   to this sandbox — worth re-verifying `dotnet run --project
   src/SyncMesh.AppHost` in a normal terminal, VS Code, or Visual Studio
   before assuming it's a real bug.
+  - **Follow-up observation**: on a later attempt (after adding the
+    `mesh-monitor-api` resource), DCP hung *before creating any container
+    at all* (`docker ps -a` stayed empty for 4+ minutes, not even
+    reaching `created`) — worse than the original symptom above. Root
+    cause both times traced to **orphaned `dcp` processes** left behind
+    by previously killed `dotnet run --project src/SyncMesh.AppHost`
+    attempts (killing the parent `dotnet` process directly doesn't clean
+    up its child DCP process). Confirmed via an isolation test: the hang
+    reproduced identically with `mesh-monitor-api` temporarily removed
+    from `AppHost.cs`, ruling out that resource as the cause, and cleared
+    immediately after killing every stray `dcp.exe` (`Get-Process | Where-
+    Object { $_.ProcessName -match 'dcp' } | Stop-Process -Force`) before
+    the next run. If a fresh `dotnet run --project src/SyncMesh.AppHost`
+    hangs with zero containers appearing, check for and kill orphaned
+    `dcp` processes first, before assuming the AppHost topology itself is
+    broken.
 - **`dotnet-ef` tool**: installed as a local tool via
   `.config/dotnet-tools.json` (repo-scoped), not global — run `dotnet tool
   restore` after cloning rather than installing it globally.
