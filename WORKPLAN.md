@@ -17,7 +17,7 @@ phase status), see `ARCHITECTURE.md` instead.
 | 1 — Local Event Store (Daemon Side) | ✅ Done | [Data model](docs/06-data-model.md), [local-durability.feature](docs/bdd/features/local-durability.feature) (deferred — see notes), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [Event Recording Flow](docs/sequence-diagrams.md) |
 | 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Questions 1 & 2 — both resolved) |
 | 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md) |
-| 4 — Passive Monitoring | ⬜ Not started | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature) |
+| 4 — Passive Monitoring | ✅ Done | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature) |
 | 5 — Interactive Tunnel + Relay Fallback | ⬜ Not started | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security review) |
 | 6 — Hardening & Operational Readiness | ⬜ Not started | [Design doc §8](docs/00-design-document.md) (all Open Questions), `docs/adr/` (re-review as needed) |
 
@@ -139,17 +139,19 @@ Note: a standalone (zero-peer) server is a fully valid, permanent deployment on 
 3. A step-definition text mismatch from the Phase 2 session ("...leaf node connection **directly to** the cloud cluster" vs. the Switching scenario's "...connection **to** the cloud cluster", no "directly") had silently left that scenario skipped since Task 33 — fixed by adding the missing exact-text overload.
 4. Cucumber Expressions treat `/` as alternative-text syntax (`gateway/supercluster` parses as "gateway" OR "supercluster", not the literal string) — had to escape it (`gateway\/supercluster`) in the step attribute to match the feature file's literal text.
 
-## Phase 4 — Passive Monitoring
+## Phase 4 — Passive Monitoring ✅ Done
 
 **Related docs**: [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature)
 
-**Entry criteria:** Phase 2 complete (does not require Phase 3).
+**Entry criteria:** Phase 2 complete (does not require Phase 3). ✅
 
-- [ ] Daemon telemetry/status published to `monitor.<siteId>.<instanceId>.*`
-- [ ] Minimal remote client/CLI subscribing to monitor subjects for a given site/instance
+- [x] Daemon telemetry/status published to `monitor.<siteId>.<instanceId>.status` — `SyncMesh.Daemon.Nats.MonitorPublisher`, a `BackgroundService` publishing a `SyncMesh.Contracts.DaemonStatus` snapshot (buffered-event count read from the local JetStream stream state, leaf connection state) on a plain core-NATS subject every `DaemonMonitorOptions.PublishInterval` (default 5s). Deliberately **not** JetStream — telemetry is current-state, not a replayable event, so it shares only the daemon's NATS connection with the event-sync path, never its streams or failure semantics (CLAUDE.md working agreement #6).
+- [x] `DaemonOptions.InstanceId` added (smart default: machine name) — distinguishes multiple daemon instances that might share one `SiteId`.
+- [x] Minimal remote client/CLI: `src/SyncMesh.MonitorClient` — a small console app taking `<nats-url> <siteId> [instanceId]`, subscribing to `monitor.<siteId>.<instanceId>.*` and printing each `DaemonStatus` as it arrives. Manually smoke-tested against a live `nats-server` container end to end (real publish → real subscribe → printed output), not just exercised via the BDD suite's inline replica of the same logic.
 
 **Exit criteria:**
-- [ ] `remote-monitoring-tunnel.feature` passive-monitoring scenario passes
+- [x] `remote-monitoring-tunnel.feature` passive-monitoring scenario passes — `SyncMesh.Bdd.Tests.StepDefinitions.{MonitorContext,MonitorSteps}`, a real daemon stack (JetStream setup + `MonitorPublisher`) against a real hub+leaf NATS pair, with a subscriber connected on the hub side standing in for "the remote user" — exactly where a real monitoring client would connect, proving the telemetry crosses the leaf boundary via ordinary NATS routing with zero separate infrastructure. The other 5 scenarios in this feature file (direct tunnel, relay fallback, TLS/service-credential auth, both cross-failure-isolation scenarios) are Phase 5/6 scope and remain correctly pending.
+- [x] Final full-solution `dotnet build` + `dotnet test` pass — 0 build errors, 0 test failures (2 EventStore.Tests.Sqlite, 2 Postgres, 2 SqlServer, 10 Daemon.Tests, 5 Sync.Tests, 26 Bdd.Tests [21 passed + 5 correctly skipped/pending Phase 5 tunnel scenarios]).
 
 ## Phase 5 — Interactive Tunnel + Relay Fallback
 

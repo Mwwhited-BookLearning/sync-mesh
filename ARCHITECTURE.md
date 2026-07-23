@@ -139,6 +139,36 @@ don't let it go stale.
   it silently fails to match a feature file step containing that same
   literal text. Escape it (`gateway\/supercluster`) to match literally.
 
+## Passive monitoring (Phase 4)
+
+- **Telemetry rides plain core-NATS pub/sub, deliberately never
+  JetStream.** `SyncMesh.Daemon.Nats.MonitorPublisher` publishes a
+  `DaemonStatus` snapshot to `monitor.<siteId>.<instanceId>.status` on the
+  daemon's existing leaf connection — no separate stream, no ack, no
+  retention policy. Current-state telemetry has nothing to replay; the
+  next tick supersedes a missed one, so there's no durability contract to
+  uphold here, unlike the event-sync path. This is also what keeps the two
+  paths' failure domains genuinely separate (CLAUDE.md working agreement
+  #6): a JetStream problem on the event side can't touch monitoring, and
+  vice versa, because they don't share a stream.
+- **A remote monitoring client connects on the server/hub side, never
+  directly to a daemon's leaf.** Same interest-graph routing that already
+  carries event-sync traffic across the leaf boundary (validated in Phase
+  2/3) carries `monitor.*` subjects too, with zero additional
+  configuration — this is the concrete thing "no separate infrastructure
+  needed" (design doc §4.5) means in practice.
+- **`127.0.0.1` can hang where `localhost` works, for a directly-`docker
+  run -p`-published port in this sandbox.** Manually smoke-testing
+  `SyncMesh.MonitorClient` against a container started with a bare `docker
+  run -p hostPort:4222` (not via Testcontainers) timed out connecting to
+  `127.0.0.1:hostPort` — a raw `/dev/tcp` probe to the same address from
+  Bash hung for the full 2-minute command timeout, while the identical
+  probe against `localhost:hostPort` succeeded immediately. Every
+  Testcontainers-based test in this repo is unaffected (`container
+  .Hostname` never resolves to a bare `127.0.0.1` literal), so this only
+  bites ad hoc manual verification against a directly-run container —
+  prefer `localhost` over `127.0.0.1` when doing that in this environment.
+
 ## Configuration
 
 Every tunable (buffer caps, timeouts, retention, reconnect/backoff, subject

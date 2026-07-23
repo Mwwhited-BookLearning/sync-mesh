@@ -24,6 +24,12 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services
+    .AddOptions<DaemonMonitorOptions>()
+    .Bind(builder.Configuration.GetSection(DaemonMonitorOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 // Tier 1: local, durable-only-while-recording buffer. Always SQLite — see
 // docs/adr/0001-event-store-on-ef-core.md.
 var connectionString = builder.Configuration.GetConnectionString("EventStore")
@@ -49,6 +55,11 @@ builder.Services.AddScoped<LocalEventReader>();
 builder.Services.AddHostedService<DaemonJetStreamSetup>();
 builder.Services.AddHostedService<LocalIpcListener>();
 builder.Services.AddHostedService<EventForwarder>();
+
+// Passive monitoring (Tier X) — architecturally separate from the event-
+// sync path above: its own subject namespace, no JetStream, no shared
+// failure domain. See docs/00-design-document.md §4.5.
+builder.Services.AddHostedService<MonitorPublisher>();
 
 var host = builder.Build();
 

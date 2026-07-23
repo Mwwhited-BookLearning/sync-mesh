@@ -15,6 +15,14 @@ public sealed class DaemonOptions
     [Required]
     public string SiteId { get; set; } = Environment.MachineName;
 
+    // Identifies this specific daemon process for passive monitoring
+    // (monitor.<siteId>.<instanceId>.*) — distinct from SiteId when
+    // multiple daemon instances share one site (e.g. several recording
+    // rigs at the same physical location). Smart default assumes one
+    // daemon per machine; override when that's not true.
+    [Required]
+    public string InstanceId { get; set; } = Environment.MachineName;
+
     // Named pipe the Tier 0 (Local App <-> Local Daemon) IPC listener
     // binds to. See docs/00-design-document.md §4.1.
     [Required]
