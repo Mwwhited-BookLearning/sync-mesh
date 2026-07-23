@@ -23,6 +23,43 @@ phase status), see `ARCHITECTURE.md` instead.
 
 ---
 
+## Developer tooling built alongside the phases (not itself a phase)
+
+Not tracked against `docs/05-implementation-guide.md` — pure developer/
+operator tooling layered on top of Phase 4's telemetry foundation and the
+topology shapes in `docs/08-deployment-models.md`. Full details in
+`ARCHITECTURE.md` → "Mesh-wide monitoring dashboard and deployment-model
+sandbox" and `UI-ARCHITECTURE.md` (frontend-specific).
+
+- [x] **Mesh monitor web dashboard**: `src/SyncMesh.MeshMonitor.Api`
+      (ASP.NET Core + SignalR, subscribes to `monitor.>`, serves a REST
+      snapshot + live push) and `web/mesh-monitor` (Vue 3 + Element Plus +
+      vis-network topology graph + Pinia-as-ViewModel + `useCommand`).
+      `ServerStatus`/`DaemonStatus` self-report each node's own configured
+      connections + per-connection event counts, so the dashboard's
+      topology is derived from what every node says about itself — no
+      separate config to maintain. Backend serves the built frontend from
+      its own `wwwroot` (populated automatically on `dotnet build`, not
+      just `publish` — see `UI-ARCHITECTURE.md`). Wired into
+      `SyncMesh.AppHost` as the `mesh-monitor-api` resource.
+      10 Vitest unit tests + 1 Playwright e2e smoke test, all passing.
+      **Not yet visually confirmed live in the Aspire dashboard** — DCP
+      hung on every attempt in this sandbox session (traced to orphaned
+      `dcp` processes from earlier killed runs, confirmed unrelated to
+      this resource via an isolation test — see `ARCHITECTURE.md`). The
+      resource is configured correctly per Aspire's standard automatic
+      HTTP-endpoint-from-launchSettings detection; re-verify visually
+      next session (`dotnet run --project src/SyncMesh.AppHost`, check
+      the dashboard's Resources view for `mesh-monitor-api`'s URL).
+- [x] **Deployment-model sandbox**: `docker-compose.yml` (repo root, one
+      Compose profile per model in `docs/08-deployment-models.md`) +
+      `Properties/launchSettings.json` profiles on `SyncMesh.Daemon`/
+      `SyncMesh.ServerHost`, one per node-role per model. Mesh-model nodes
+      each get their own Postgres database (not shared), so convergence
+      is genuinely proven. Smoke-tested `client-onprem` fully live: real
+      event, real daemon, real server, real Postgres row. How-to in
+      `docs/10-running-deployment-models.md`.
+
 ## Phase 0 — Project Setup
 
 **Related docs**: [Data model](docs/06-data-model.md) (`EventStoreDbContext` shape), [ADR-0001](docs/adr/0001-event-store-on-ef-core.md) (EF Core on SQLite/PostgreSQL/SQL Server)
