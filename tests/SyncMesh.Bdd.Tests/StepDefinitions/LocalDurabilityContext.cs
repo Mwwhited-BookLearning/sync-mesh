@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NATS.Client.Core;
 using NATS.Client.JetStream;
+using NATS.Client.JetStream.Models;
 using SyncMesh.Contracts;
 using SyncMesh.Daemon;
 using SyncMesh.Daemon.Ipc;
@@ -112,6 +113,35 @@ public sealed class LocalDurabilityContext : IAsyncDisposable
             break;
         }
     }
+
+    public async Task SimulateUpstreamAckAllAsync()
+    {
+        long remaining = await GetBufferedMessageCountAsync();
+        while (remaining > 0)
+        {
+            await SimulateUpstreamAckAsync();
+            remaining = await GetBufferedMessageCountAsync();
+        }
+    }
+
+    // Updates the already-created stream's limits in place — JetStream
+    // stream config updates are idempotent, so this doesn't need a fresh
+    // container. Mirrors what an operator overriding DaemonNatsOptions
+    // would produce.
+    public async Task SetCapacityCapAsync(long maxMsgs)
+    {
+        await JetStream.CreateOrUpdateStreamAsync(new StreamConfig(NatsOptions.StreamName, [$"{NatsOptions.SubjectPrefix}.>"])
+        {
+            Retention = StreamConfigRetention.Workqueue,
+            Storage = StreamConfigStorage.File,
+            MaxBytes = -1,
+            MaxMsgs = maxMsgs,
+            MaxAge = TimeSpan.Zero,
+            Discard = StreamConfigDiscard.New,
+        });
+    }
+
+    public Exception? LastAppendError { get; set; }
 
     public async ValueTask DisposeAsync()
     {

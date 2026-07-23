@@ -15,7 +15,7 @@ phase status), see `ARCHITECTURE.md` instead.
 |---|---|---|
 | 0 — Project Setup | ✅ Done | [Data model](docs/06-data-model.md), [ADR-0001](docs/adr/0001-event-store-on-ef-core.md) |
 | 1 — Local Event Store (Daemon Side) | ✅ Done | [Data model](docs/06-data-model.md), [local-durability.feature](docs/bdd/features/local-durability.feature) (deferred — see notes), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [Event Recording Flow](docs/sequence-diagrams.md) |
-| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | 🟡 Mostly done — see notes | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature) (not yet bound), [Design doc §8](docs/00-design-document.md) (Open Questions 1 & 2 — both resolved) |
+| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Questions 1 & 2 — both resolved) |
 | 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ⬜ Not started | [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md) |
 | 4 — Passive Monitoring | ⬜ Not started | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature) |
 | 5 — Interactive Tunnel + Relay Fallback | ⬜ Not started | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security review) |
@@ -85,7 +85,7 @@ full-mesh-to-cloud, TLS + service-credential baseline):
   discussed changes its content, and two of its scenarios already have
   passing step bindings from this phase that textual changes would break.
 
-## Phase 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) — mostly done, gaps below
+## Phase 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) ✅ Done
 
 **Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see 2026-07-23 Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Question 2 — resolved; Open Question 1 resolved)
 
@@ -96,17 +96,19 @@ full-mesh-to-cloud, TLS + service-credential baseline):
 - [x] Publish-on-write from daemon's event writer to local JetStream stream — one-way (daemon → server); `LocalEventWriter` publishes after the local SQLite save succeeds, never mirrors server data back down
 - [x] Minimal server-side subscriber: `SyncMesh.ServerHost.Nats.ApplyResponder` — core-NATS request/reply (not JetStream stream mirroring — see ADR-0002 Amendment for why), ack + write to server-tier `EventStoreDbContext`
 - [x] Idempotent apply (dedupe by `GlobalEventId`) on the server side
-- [x] NATS added to `SyncMesh.AppHost` topology (two container resources, `nats-hub` + `nats-leaf`, real leafnode config files under `src/SyncMesh.AppHost/nats-config/`) — code compiles; not live-verified end-to-end in this sandbox due to the same DCP/container-start limitation observed in Phase 0
+- [x] NATS added to `SyncMesh.AppHost` topology (two container resources, `nats-hub` + `nats-leaf`, real leafnode config files under `src/SyncMesh.AppHost/nats-config/`) — **live-verified end-to-end** (2026-07-23): `dotnet run --project src/SyncMesh.AppHost` brings up Postgres + nats-hub + nats-leaf containers and the `ServerHost`/`Daemon` project processes cleanly; a smoke-test client appended one event through the daemon's IPC pipe and it was confirmed, moments later, as a row in the server-tier Postgres `Events` table — the full Local App → Daemon → SQLite → local leaf → hub → `ApplyResponder` → Postgres path, live, not simulated. (The DCP/container-start limitation seen in Phase 0 did not recur in this session.)
+- [x] **Fixed along the way**: `ServerHost`/`Daemon` `Program.cs` never called `Database.MigrateAsync()` — only the BDD test harness applied migrations manually, so a fresh server-tier database had no schema at all outside of tests. Both hosts now migrate their `EventStoreDbContext` on startup before `host.Run()`.
 
 **Exit criteria:**
-- [~] `local-durability.feature`: 6 of the file's non-Phase-3/5 scenarios now pass (Background + retained-until-ack, removed-after-ack, disk-bound-default, buffered-read). **Still pending**: explicit-smaller-cap-override, recording-session-ends-no-residual, and no-nearest-server-configured — deferred for time, not blocked on anything; same harness pattern (`SyncMesh.Bdd.Tests/StepDefinitions/LocalDurabilityContext.cs`) extends to them directly.
-- [ ] `nearest-neighbor-sync.feature`: **not yet step-defined.** Its on-prem/cloud connection scenarios are straightforward with the existing `NatsLeafHubFixture`-style harness but weren't picked up this pass in favor of the disconnect/reconnect test and the retention scenarios.
+- [x] `local-durability.feature`: all 9 non-Phase-3/5 scenarios pass (Background + retained-until-ack, removed-after-ack, disk-bound-default, buffered-read, explicit-smaller-cap-override, recording-session-ends-no-residual, no-nearest-server-configured).
+- [x] `nearest-neighbor-sync.feature`: the 4 Phase 2 scenarios (on-prem connect, cloud connect with no on-prem tier, config-only switch between them, firewall/NAT outbound-only survival) are step-defined and pass, via `SyncMesh.Bdd.Tests/StepDefinitions/NearestServerContext.cs` + `NearestServerSteps.cs`. The file's remaining 4 scenarios (standalone server, server-mesh reconciliation, intra-site mesh, full-mesh-to-cloud) are correctly still pending — Phase 3 scope.
 - [x] Explicit extended-disconnect/reconnect test **exists and passes** — `SyncMesh.Sync.Tests.DaemonToServerSyncTests.ExtendedDisconnectThenReconnect_AllBufferedEventsEventuallyReachTheServer_NoLossNoDuplication`: hub container actually stopped (not a network partition), events written during the outage, hub restarted, all events confirmed applied exactly once with zero loss/duplication. See ADR-0002's 2026-07-23 Amendment for what this proved and why the design sidesteps the specific mirror-sync risk that was originally flagged.
+- [x] Live end-to-end verification of the Aspire AppHost NATS topology, outside the BDD/Testcontainers harnesses — see above.
 
-**Follow-ups carried to a later pass** (not required to call Phase 2 done, but real gaps):
-1. `nearest-neighbor-sync.feature` step definitions.
-2. The three remaining `local-durability.feature` scenarios above.
-3. Live end-to-end verification of the Aspire AppHost NATS topology outside this sandbox (same caveat as Phase 0's Postgres container).
+Final full-solution `dotnet build` + `dotnet test` pass — 0 build errors, 0
+test failures (2 EventStore.Tests.Sqlite, 2 EventStore.Tests.Postgres, 2
+EventStore.Tests.SqlServer, 10 Daemon.Tests, 2 Sync.Tests, 26 Bdd.Tests [12
+passed + 14 correctly skipped/pending Phase 3+ scenarios]).
 
 **Deferred to Phase 6 (pre-release), not Phase 2 follow-ups:**
 - TLS + registered service credentials for the leaf/gateway connections (ADR-0002/ADR-0004 security baseline) — confirmed out of scope for POC.
@@ -188,10 +190,13 @@ product/ops decision, don't resolve it here.
       to a smaller explicit `MaxBytes`/`MaxAge`/`MaxMsgs` via `IOptions<T>`
       (`ARCHITECTURE.md` → Configuration). Disk-exhaustion behavior is
       reject-new-writes, not evict-unacked-data. See design doc §4.2.
-- [ ] **2. Leaf node reconnect-sync reliability** (Phase 2 exit criteria
-      requires an explicit test; Phase 6 requires load/chaos testing).
-      Reconnect/backoff settings will also be `IOptions<T>`-bound with a
-      smart default.
+- **2. Leaf node reconnect-sync reliability.**
+  - [x] Phase 2 exit criteria — an explicit extended-disconnect/reconnect
+        test exists and passes (`SyncMesh.Sync.Tests`, see above).
+  - [ ] Phase 6 requires load/chaos testing under realistic outage
+        durations/volumes, beyond this single-scenario proof. Reconnect/
+        backoff settings will also be `IOptions<T>`-bound with a smart
+        default.
 - **3. Server-tier retention/backup policy** (Phase 6).
   - [x] Ownership split decided — see
         [`docs/07-operations-guide.md`](docs/07-operations-guide.md):

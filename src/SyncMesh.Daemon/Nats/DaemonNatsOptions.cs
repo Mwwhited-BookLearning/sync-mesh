@@ -31,4 +31,14 @@ public sealed class DaemonNatsOptions
     public string ApplyRequestSubject { get; set; } = "server.apply.request";
 
     public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    // Buffer cap ceiling — see docs/00-design-document.md §4.2 and
+    // ADR-0002's 2026-07-22 Amendment: floor is "never discard before the
+    // server acks it" (WorkQueue retention itself), ceiling defaults to
+    // unbounded except by available local disk. -1 means unlimited for
+    // MaxBytes/MaxMsgs; TimeSpan.Zero means unlimited for MaxAge. Override
+    // any of these to a smaller explicit cap per deployment.
+    public long MaxBytes { get; set; } = -1;
+    public long MaxMsgs { get; set; } = -1;
+    public TimeSpan MaxAge { get; set; } = TimeSpan.Zero;
 }

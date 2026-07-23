@@ -20,9 +20,9 @@ public sealed class DaemonJetStreamSetup(NatsJSContext jetStream, IOptions<Daemo
             {
                 Retention = StreamConfigRetention.Workqueue,
                 Storage = StreamConfigStorage.File,
-                MaxBytes = -1,
-                MaxMsgs = -1,
-                MaxAge = TimeSpan.Zero,
+                MaxBytes = opts.MaxBytes,
+                MaxMsgs = opts.MaxMsgs,
+                MaxAge = opts.MaxAge,
                 Discard = StreamConfigDiscard.New,
             },
             cancellationToken);

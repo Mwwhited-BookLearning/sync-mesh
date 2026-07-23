@@ -41,7 +41,7 @@ internal sealed class DaemonTestHost : IAsyncDisposable
         _listener = listener;
     }
 
-    public static async Task<DaemonTestHost> CreateAsync()
+    public static async Task<DaemonTestHost> CreateAsync(Action<DaemonNatsOptions>? configureNats = null)
     {
         var nats = new ContainerBuilder("nats:2-alpine")
             .WithResourceMapping(Encoding.UTF8.GetBytes("""
@@ -71,7 +71,11 @@ internal sealed class DaemonTestHost : IAsyncDisposable
             o.SiteId = "test-site";
             o.IpcPipeName = pipeName;
         });
-        services.Configure<DaemonNatsOptions>(o => o.Url = natsUrl);
+        services.Configure<DaemonNatsOptions>(o =>
+        {
+            o.Url = natsUrl;
+            configureNats?.Invoke(o);
+        });
         services.AddSingleton(sp => new NatsConnection(new NatsOpts { Url = sp.GetRequiredService<IOptions<DaemonNatsOptions>>().Value.Url }));
         services.AddSingleton(sp => new NatsJSContext(sp.GetRequiredService<NatsConnection>()));
         services.AddSingleton<DaemonJetStreamSetup>();

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using SyncMesh.EventStore;
 using SyncMesh.ServerHost.Nats;
 
@@ -34,4 +35,10 @@ builder.Services
 builder.Services.AddHostedService<ApplyResponder>();
 
 var host = builder.Build();
+
+using (var scope = host.Services.CreateScope())
+{
+    await scope.ServiceProvider.GetRequiredService<EventStoreDbContext>().Database.MigrateAsync();
+}
+
 host.Run();

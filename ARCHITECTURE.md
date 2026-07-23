@@ -66,6 +66,28 @@ don't let it go stale.
   first. Any test that stops/starts a container it will reconnect to later
   needs an explicit fixed `WithPortBinding(hostPort, containerPort)` for
   that container specifically.
+- **`NatsJSContext.PublishAsync` does not throw on a server-side
+  rejection by itself** (e.g. the stream's configured `MaxMsgs`/`MaxBytes`
+  cap is full, with `Discard: New`) — it returns a `PubAckResponse` that
+  must be checked; only calling `.EnsureSuccess()` on that response throws
+  (`NatsJSApiException`). Discovered because a capacity-cap test's
+  "expect rejection" assertion silently found nothing to catch until
+  `EnsureSuccess()` was added to `LocalEventWriter`. Any code path that
+  calls `PublishAsync` and cares whether the publish actually succeeded
+  must call `EnsureSuccess()` (or otherwise inspect the ack) — awaiting
+  the call alone proves nothing.
+- **Worker hosts must migrate their own `EventStoreDbContext` on
+  startup.** `SyncMesh.ServerHost` and `SyncMesh.Daemon` originally relied
+  entirely on the BDD/integration test harnesses calling
+  `Database.MigrateAsync()` manually — nothing in either host's own
+  `Program.cs` did. Invisible in every automated test (the harness always
+  migrates), but a live Aspire AppHost run against a fresh Postgres
+  container had zero tables and the server-tier writes had nowhere to
+  land. Fixed by adding an explicit `await
+  scope.ServiceProvider.GetRequiredService<EventStoreDbContext>()
+  .Database.MigrateAsync()` in both `Program.cs` files, before
+  `host.Run()`. Any new host that owns an `EventStoreDbContext` needs the
+  same startup step — don't assume it's someone else's job.
 
 ## Configuration
 

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
 using NATS.Client.JetStream;
@@ -50,4 +51,10 @@ builder.Services.AddHostedService<LocalIpcListener>();
 builder.Services.AddHostedService<EventForwarder>();
 
 var host = builder.Build();
+
+using (var scope = host.Services.CreateScope())
+{
+    await scope.ServiceProvider.GetRequiredService<EventStoreDbContext>().Database.MigrateAsync();
+}
+
 host.Run();
