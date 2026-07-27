@@ -38,4 +38,10 @@ public sealed class EventEnvelope
 
     // Schema/version tag for the payload shape, to support safe evolution.
     public required int PayloadSchemaVersion { get; init; }
+
+    // Optional: GlobalEventIds of prior events this event's data was
+    // derived from/sourced against. Descriptive/audit only — does not
+    // affect idempotent apply, HLC ordering, or replay. See
+    // docs/06-data-model.md §7.
+    public IReadOnlyList<Guid> ParentEventIds { get; init; } = [];
 }

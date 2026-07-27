@@ -31,6 +31,10 @@ msbuild.log
 msbuild.err
 msbuild.wrn
 
+# Generated BDD feature files (source of truth is docs/bdd/design/*.md;
+# regenerated automatically by tools/FeatureDocExtractor on every build)
+docs/bdd/features/*.feature
+
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 ScriptAssemblies/

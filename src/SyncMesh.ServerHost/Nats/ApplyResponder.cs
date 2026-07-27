@@ -88,6 +88,11 @@ public sealed class ApplyResponder(
         };
         db.Events.Add(record);
 
+        foreach (var parentId in envelope.ParentEventIds)
+        {
+            db.EventLineages.Add(new EventLineage { ChildEventId = record.GlobalEventId, ParentEventId = parentId });
+        }
+
         try
         {
             await db.SaveChangesAsync(ct);

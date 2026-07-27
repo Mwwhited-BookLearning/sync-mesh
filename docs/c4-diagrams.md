@@ -1,6 +1,14 @@
 # C4 Diagrams
 
-C4 model diagrams for the distributed event-sourced recording & sync mesh.
+C4 model diagrams that are **cross-cutting or not yet owned by a single
+BDD feature** — per-feature component diagrams now live alongside their
+owning feature under `docs/bdd/design/*.md` (see e.g. "Component Diagram
+— Local Daemon" in `docs/bdd/design/local-durability.md`) so each
+feature's design stands on its own. This file keeps only: the whole-system
+Context and Container diagrams (span every feature, owned by none), and
+the Mesh Monitor Dashboard's component diagram (not yet feature-owned —
+see ADR-0005, `WORKPLAN.md` → "Mesh Monitor Dashboard").
+
 Rendered with PlantUML + the [C4-PlantUML](https://github.com/plantuml-stdlib/C4-PlantUML)
 include library (pulled from GitHub at render time — vendor a local copy of
 `C4_Context.puml`/`C4_Container.puml`/`C4_Component.puml` if you need offline
@@ -95,37 +103,6 @@ Note: `meshMonitor` connects to *a* hub — in a multi-site mesh it observes
 whichever node it's pointed at; monitor subjects cross leaf/gateway
 boundaries the same way event-sync subjects do (§4.5), so one dashboard
 instance can see the whole reachable mesh from a single connection point.
-
-## Component Diagram — Local Daemon (C4 Level 3)
-
-```plantuml
-@startuml component-daemon
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
-
-title Component Diagram — Local Daemon
-
-Container_Boundary(daemon, "Local Daemon") {
-    Component(ipcListener, "IPC Listener", "Named pipe / gRPC server", "Accepts events from the local app")
-    Component(eventWriter, "Local Event Writer", "EF Core + SQLite", "Appends incoming events; assigns HLC + GlobalEventId")
-    Component(hlcGen, "HLC Generator", "C# component", "Assigns/merges hybrid logical clocks")
-    Component(leafPublisher, "Leaf Publisher", "NATS client", "Publishes buffered events to local JetStream stream")
-    Component(jetstream, "Local JetStream Stream", "NATS JetStream, WorkQueue retention", "Short-lived durable buffer")
-    Component(leafConn, "Leaf Node Connection", "Embedded nats-server (leaf mode)", "Outbound-only connection to nearest server")
-    Component(monitorPublisher, "Monitor Publisher", "NATS client", "Publishes telemetry to monitor.* subjects")
-    Component(tunnelAgent, "Tunnel Agent", "frp/chisel client or overlay agent", "Attempts direct connectivity; else awaits relay")
-}
-
-Rel(ipcListener, eventWriter, "Passes captured event")
-Rel(eventWriter, hlcGen, "Requests next HLC value")
-Rel(eventWriter, leafPublisher, "Hands off event for forwarding")
-Rel(leafPublisher, jetstream, "Publishes into")
-Rel(jetstream, leafConn, "Delivered via, once acked upstream, entry removed (WorkQueue)")
-Rel(eventWriter, monitorPublisher, "Emits status/metrics")
-Rel(monitorPublisher, leafConn, "Publishes monitor.* subjects via")
-Rel(tunnelAgent, leafConn, "Signals control state via tunnel.* subjects (separate from event subjects)")
-
-@enduml
-```
 
 ## Component Diagram — Mesh Monitor Dashboard (C4 Level 3)
 

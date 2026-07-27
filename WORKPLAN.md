@@ -11,15 +11,25 @@ phase status), see `ARCHITECTURE.md` instead.
 
 ## Status at a glance
 
+**2026-07-27 — Docs restructured**: `sequence-diagrams.md`/`c4-diagrams.md`/
+`09-use-cases.md` content is now colocated per-feature in
+`docs/bdd/design/*.md` (each feature's design stands on its own — use
+case, sequence diagram, relevant C4 excerpt, deployment-model refs, and
+the Gherkin source of truth); `docs/bdd/features/*.feature` is now
+generated build output (see `ARCHITECTURE.md` → "Feature-doc extraction
+tooling"). New feature work should add a companion doc under
+`docs/bdd/design/`, not hand-write a `.feature` file.
+
 | Phase | Status | Related docs |
 |---|---|---|
 | 0 — Project Setup | ✅ Done | [Data model](docs/06-data-model.md), [ADR-0001](docs/adr/0001-event-store-on-ef-core.md) |
-| 1 — Local Event Store (Daemon Side) | ✅ Done | [Data model](docs/06-data-model.md), [local-durability.feature](docs/bdd/features/local-durability.feature) (deferred — see notes), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [Event Recording Flow](docs/sequence-diagrams.md) |
-| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Questions 1 & 2 — both resolved) |
-| 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md) |
-| 4 — Passive Monitoring | ✅ Done | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature) |
+| 1 — Local Event Store (Daemon Side) | ✅ Done | [Data model](docs/06-data-model.md), [local-durability.md](docs/bdd/design/local-durability.md) (deferred — see notes; includes Event Recording Flow diagram), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md) |
+| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.md](docs/bdd/design/local-durability.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md), [Design doc §8](docs/00-design-document.md) (Open Questions 1 & 2 — both resolved) |
+| 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md) (includes Server Mesh Reconciliation diagram) |
+| 4 — Passive Monitoring | ✅ Done | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) |
 | Ancillary — Mesh Monitor Dashboard | 🚧 In progress (backend only, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [c4-diagrams.md](docs/c4-diagrams.md), [ui-wireframes.md](docs/ui-wireframes.md) |
-| 5 — Interactive Tunnel + Relay Fallback | ⬜ Not started | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security review) |
+| Ancillary — Event Lineage (Provenance) Schema | ✅ Done | [ADR-0006](docs/adr/0006-event-lineage-descriptive-provenance.md), [Data model §7](docs/06-data-model.md) |
+| 5 — Interactive Tunnel + Relay Fallback | ⬜ Not started | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security review) |
 | 6 — Hardening & Operational Readiness | ⬜ Not started | [Design doc §8](docs/00-design-document.md) (all Open Questions), `docs/adr/` (re-review as needed) |
 
 ---
@@ -50,7 +60,7 @@ phase status), see `ARCHITECTURE.md` instead.
 
 ## Phase 1 — Local Event Store (Daemon Side) ✅ Done
 
-**Related docs**: [Data model](docs/06-data-model.md) (`EventEnvelope`, `EventRecord`, `HlcGenerator`, idempotent apply shape), [local-durability.feature](docs/bdd/features/local-durability.feature), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [Event Recording Flow diagram](docs/sequence-diagrams.md)
+**Related docs**: [Data model](docs/06-data-model.md) (`EventEnvelope`, `EventRecord`, `HlcGenerator`, idempotent apply shape), [local-durability.md](docs/bdd/design/local-durability.md) (includes Event Recording Flow diagram), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md)
 
 **Entry criteria:** Phase 0 complete. ✅
 
@@ -88,7 +98,7 @@ full-mesh-to-cloud, TLS + service-credential baseline):
 
 ## Phase 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) ✅ Done
 
-**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see 2026-07-23 Amendment), [local-durability.feature](docs/bdd/features/local-durability.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Design doc §8](docs/00-design-document.md) (Open Question 2 — resolved; Open Question 1 resolved)
+**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see 2026-07-23 Amendment), [local-durability.md](docs/bdd/design/local-durability.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md), [Design doc §8](docs/00-design-document.md) (Open Question 2 — resolved; Open Question 1 resolved)
 
 **Entry criteria:** Phase 1 complete. ✅
 
@@ -116,7 +126,7 @@ passed + 14 correctly skipped/pending Phase 3+ scenarios]).
 
 ## Phase 3 — Server Mesh Reconciliation (Gateways/Supercluster) ✅ Done
 
-**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see 2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md) (`HlcGenerator.Merge`), [event-ordering-and-idempotency.feature](docs/bdd/features/event-ordering-and-idempotency.feature), [nearest-neighbor-sync.feature](docs/bdd/features/nearest-neighbor-sync.feature), [Server Mesh Reconciliation diagram](docs/sequence-diagrams.md), [Deployment models](docs/08-deployment-models.md)
+**Related docs**: [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (see 2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md) (`HlcGenerator.Merge`), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md) (includes Server Mesh Reconciliation diagram), [Deployment models](docs/08-deployment-models.md)
 
 **Entry criteria:** Phase 2 complete, at least two server-tier instances available for testing. ✅
 
@@ -142,7 +152,7 @@ Note: a standalone (zero-peer) server is a fully valid, permanent deployment on 
 
 ## Phase 4 — Passive Monitoring ✅ Done
 
-**Related docs**: [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature)
+**Related docs**: [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md)
 
 **Entry criteria:** Phase 2 complete (does not require Phase 3). ✅
 
@@ -156,7 +166,7 @@ Note: a standalone (zero-peer) server is a fully valid, permanent deployment on 
 
 ## Phase 5 — Interactive Tunnel + Relay Fallback
 
-**Related docs**: [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md) (see Amendment), [remote-monitoring-tunnel.feature](docs/bdd/features/remote-monitoring-tunnel.feature), [Tunnel Fallback diagram](docs/sequence-diagrams.md), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security baseline + phase gating decided, full review moved to Phase 6)
+**Related docs**: [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md) (see Amendment), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security baseline + phase gating decided, full review moved to Phase 6)
 
 **Entry criteria:** Phase 2 complete. The full security review (Open Question 5) is **out of scope for this phase** — it's a Phase 6 pre-production gate, not a POC/prototype blocker. This phase ships against the security baseline already decided (TLS + registered service credentials), not the full review.
 
@@ -186,6 +196,32 @@ pre-production-readiness phase — nothing here is required for a POC.
 
 **Exit criteria:**
 - [ ] All Open Questions in `docs/00-design-document.md` §8 are resolved and documented, or explicitly accepted as ongoing risks with a named owner and review date
+
+## Ancillary Work
+
+Work outside the numbered phase plan — additive/layered on top of already-
+closed phases, not a reopening of their exit criteria.
+
+### Mesh Monitor Dashboard 🚧 In progress (backend only)
+
+See [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md). Started ad hoc
+after Phase 4, not part of the original implementation guide. Backend
+(`SyncMesh.MeshMonitor.Api`), `ServerStatus`/`ServerMonitorPublisher`, and
+AppHost wiring exist; the SPA frontend, authentication, and a test project
+do not — see ADR-0005 Consequences for the full gap list.
+
+### Event Lineage (Provenance) Schema ✅ Done
+
+See [ADR-0006](docs/adr/0006-event-lineage-descriptive-provenance.md).
+Additive, backward-compatible schema change layered on top of Phase 1's
+already-closed exit criteria — an event can descriptively reference the
+prior event(s) its data was sourced from (many-to-many), purely for
+audit/traceability. Does not affect idempotent apply, HLC ordering, or
+replay in any way. `EventLineage` entity + DbContext wiring, migrations
+across all three providers (SQLite/Postgres/SQL Server), `EventEnvelope`/
+`AppendEventRequest` wire contract additions, `LocalEventWriter`/
+`ApplyResponder` write/apply-path threading, and migration tests are all
+complete — see `docs/06-data-model.md` §7 for the full shape.
 
 ---
 

@@ -5,7 +5,7 @@
 | Status | Draft — ready for implementation planning |
 | Owners | (assign) |
 | Last updated | 2026-07-22 |
-| Related | `docs/adr/`, `docs/05-implementation-guide.md`, `docs/bdd/features/`, `docs/08-deployment-models.md` |
+| Related | `docs/adr/`, `docs/05-implementation-guide.md`, `docs/bdd/design/`, `docs/08-deployment-models.md` |
 
 ## 1. Purpose
 
@@ -60,9 +60,10 @@ Tier X  Remote Monitoring   direct to recording instance, else relay via
                             nearest server (separate concern from Tier 1-3)
 ```
 
-See `docs/c4-diagrams.md` for the formal C4 Context and Container diagrams,
-and `docs/sequence-diagrams.md` for the recording, sync, and tunnel-fallback
-flows (PlantUML source embedded inline in each Markdown file).
+See `docs/c4-diagrams.md` for the formal C4 Context and Container diagrams
+(PlantUML source embedded inline). Per-feature recording, sync, and
+tunnel-fallback sequence diagrams live alongside each feature's design in
+`docs/bdd/design/*.md`, so each feature's design stands on its own.
 
 ### 4.1 Tier 0 — Local App ↔ Local Daemon
 

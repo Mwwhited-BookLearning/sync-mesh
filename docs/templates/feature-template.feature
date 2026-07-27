@@ -1,3 +1,5 @@
+# Superseded by docs/templates/feature-design-template.md for new features
+# (2026-07-27) — retained only as a raw-Gherkin-syntax reference.
 Feature: <Short, capability-oriented name>
   As a <role>
   I want <capability>

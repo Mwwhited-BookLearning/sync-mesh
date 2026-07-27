@@ -12,6 +12,9 @@
     <Project Path="src/SyncMesh.ServerHost/SyncMesh.ServerHost.csproj" />
     <Project Path="src/SyncMesh.ServiceDefaults/SyncMesh.ServiceDefaults.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/FeatureDocExtractor/FeatureDocExtractor.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SyncMesh.Bdd.Tests/SyncMesh.Bdd.Tests.csproj" />
     <Project Path="tests/SyncMesh.Daemon.Tests/SyncMesh.Daemon.Tests.csproj" />

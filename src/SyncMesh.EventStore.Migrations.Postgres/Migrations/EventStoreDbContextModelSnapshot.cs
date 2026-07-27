@@ -22,6 +22,21 @@ namespace SyncMesh.EventStore.Migrations.Postgres.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("SyncMesh.EventStore.EventLineage", b =>
+                {
+                    b.Property<Guid>("ChildEventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ParentEventId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ChildEventId", "ParentEventId");
+
+                    b.HasIndex("ParentEventId");
+
+                    b.ToTable("EventLineage", (string)null);
+                });
+
             modelBuilder.Entity("SyncMesh.EventStore.EventRecord", b =>
                 {
                     b.Property<Guid>("GlobalEventId")

@@ -34,6 +34,27 @@ public sealed class LocalEventWriter(
 
     public async Task<AppendEventResponse> AppendAsync(AppendEventRequest request, CancellationToken ct)
     {
+        if (request.ParentEventIds.Count > 0)
+        {
+            // Validated only against this daemon's own local store — safe
+            // today because a daemon's Events table is never purged on
+            // ack (only the JetStream WorkQueue message is), so any event
+            // this daemon ever wrote remains a valid parent. Would need
+            // revisiting if a future daemon-side retention/purge job is
+            // ever added.
+            var known = await db.Events
+                .Where(e => request.ParentEventIds.Contains(e.GlobalEventId))
+                .Select(e => e.GlobalEventId)
+                .ToListAsync(ct);
+            var unknown = request.ParentEventIds.Except(known).ToList();
+            if (unknown.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Unknown parent event id(s): {string.Join(", ", unknown)}. " +
+                    "ParentEventIds must reference events this daemon has already recorded.");
+            }
+        }
+
         for (var attempt = 1; attempt <= MaxConcurrencyRetries; attempt++)
         {
             var nextVersion = 1 + await db.Events
@@ -58,6 +79,11 @@ public sealed class LocalEventWriter(
 
             db.Events.Add(record);
 
+            var lineageRows = request.ParentEventIds
+                .Select(parentId => new EventLineage { ChildEventId = record.GlobalEventId, ParentEventId = parentId })
+                .ToList();
+            db.EventLineages.AddRange(lineageRows);
+
             try
             {
                 await db.SaveChangesAsync(ct);
@@ -65,6 +91,10 @@ public sealed class LocalEventWriter(
             catch (DbUpdateException) when (attempt < MaxConcurrencyRetries)
             {
                 db.Entry(record).State = EntityState.Detached;
+                foreach (var lineageRow in lineageRows)
+                {
+                    db.Entry(lineageRow).State = EntityState.Detached;
+                }
                 continue;
             }
 
@@ -79,6 +109,7 @@ public sealed class LocalEventWriter(
                 EventType = record.EventType,
                 PayloadJson = record.PayloadJson,
                 PayloadSchemaVersion = record.PayloadSchemaVersion,
+                ParentEventIds = request.ParentEventIds,
             };
             var subject = $"{natsOptions.Value.SubjectPrefix}.{record.OriginSiteId}.{record.StreamId}";
 

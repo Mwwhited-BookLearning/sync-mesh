@@ -200,6 +200,38 @@ Conventions specific to `SyncMesh.MeshMonitor.Api`:
   auth — this is a known gap (ADR-0005 Consequences/Follow-up), not an
   intentional exception to the TLS + service-credential baseline below.
 
+## Event lineage (provenance)
+
+See `docs/adr/0006-event-lineage-descriptive-provenance.md` and design
+data model `docs/06-data-model.md` §7.
+
+- **No DB-enforced foreign key, by design.** `EventLineage(ChildEventId,
+  ParentEventId)` has a composite PK and one secondary index
+  (`ParentEventId`) — nothing else. A hard FK to `EventRecord.GlobalEventId`
+  would reject a child event's apply purely because its parent hasn't
+  arrived at this node yet via a different gossip path, which is a benign,
+  expected race under this project's out-of-order/at-least-once delivery
+  model — not a real integrity violation. Referential integrity is
+  enforced only at authorship time, in `LocalEventWriter`, against that
+  daemon's own local store.
+- **`ApplyResponder`'s relay path needed zero changes.** It forwards the
+  original serialized `EventEnvelope` bytes verbatim onto `MESH_OUTBOUND` —
+  `ParentEventIds` is just another field on that same JSON payload, so it
+  crosses the whole mesh automatically.
+- **Lineage rows ride the same idempotency gate as `EventRecord`.** Both
+  `LocalEventWriter` and `ApplyResponder` only add `EventLineage` rows
+  alongside a genuinely-new `EventRecord` insert (never on the
+  duplicate/no-op paths), so lineage can never be double-inserted for the
+  same event without any dedicated dedupe logic of its own.
+- **Retry-loop entities must be detached together, not just the primary
+  one.** `LocalEventWriter`'s optimistic-concurrency retry loop builds a
+  fresh `EventRecord` (and now, fresh `EventLineage` rows) each attempt;
+  on a `DbUpdateException`, every entity added *in that attempt* —
+  `record` and its `lineageRows` — must be detached before retrying, or
+  the abandoned attempt's tracked entities dangle into the next one. Only
+  detaching `record` (as the original pre-lineage code did) would leave
+  stale tracked `EventLineage` instances behind.
+
 ## Configuration
 
 Every tunable (buffer caps, timeouts, retention, reconnect/backoff, subject
@@ -324,14 +356,15 @@ ambiguous which phase actually gates it.
   phase by phase, per `CLAUDE.md`'s "implement against the feature files"
   rule. The `EventStore.Tests.*` provider projects remain on xUnit — plain
   unit tests, no pending-step concern there.
-- **Feature files stay in `docs/bdd/features/`** as the single source of
-  truth (per `CLAUDE.md`) — linked into `SyncMesh.Bdd.Tests` via an explicit
-  `<ReqnrollFeatureFile Include="..." Link="..." />` item rather than
-  duplicated into the test project. Because the source lives outside the
-  project's directory tree, `ReqnrollUseIntermediateOutputPathForCodeBehind`
-  must be `true`, or Reqnroll writes generated `.feature.cs` code-behind
-  next to the linked source — i.e. into `docs/bdd/features/` — polluting a
-  documentation directory with generated code.
+- **`docs/bdd/design/*.md` is the single source of truth for Gherkin**
+  (per `CLAUDE.md`) — `docs/bdd/features/*.feature` is generated build
+  output, gitignored, never hand-edited. See "Feature-doc extraction
+  tooling" below for how and why. Because the generated source lives
+  outside the project's directory tree,
+  `ReqnrollUseIntermediateOutputPathForCodeBehind` must be `true`, or
+  Reqnroll writes generated `.feature.cs` code-behind next to the linked
+  source — i.e. into `docs/bdd/features/` — polluting a generated-output
+  directory with more generated code.
 - **A scenario's `Background` gates every scenario in that feature file.**
   If the `Background` asserts infrastructure that doesn't exist yet in the
   current phase (e.g. `local-durability.feature`'s Background asserts "an
@@ -354,6 +387,54 @@ ambiguous which phase actually gates it.
   extension (`AddSqliteEventStore` etc.) pointing at its own
   `MigrationsAssembly`. Verified per-provider via isolated test projects
   (SQLite in-process, Postgres/SQL Server via Testcontainers, not DCP).
+
+## Feature-doc extraction tooling
+
+See `docs/bdd/design/*.md` (per-feature design docs, each self-contained —
+use case, sequence diagram, relevant C4 excerpt, deployment-model refs,
+and a fenced ```gherkin``` block) and `tools/FeatureDocExtractor`.
+
+- **Exactly one ```gherkin``` block per companion doc, no sub-splitting.**
+  Gherkin only permits one `Feature:` block per `.feature` file, so the
+  extractor requires exactly one match per doc: zero is a warning (doc
+  still being drafted), more than one fails the build (ambiguous which
+  block is authoritative). Output filename is always the doc's own
+  filename stem + `.feature` — a 1:1 mapping, matching the pre-restructure
+  layout.
+- **Generated files carry a banner and are gitignored.** Every output file
+  starts with `# GENERATED FILE — DO NOT EDIT DIRECTLY.` plus its source
+  path. `docs/bdd/features/*.feature` is in `.gitignore` — committing both
+  the Markdown source and its generated output would recreate exactly the
+  staleness risk this tooling exists to eliminate, except worse (a stale
+  *committed* file reads as authoritative). `git diff` reviewability isn't
+  lost: the Gherkin text still lives in the `.md`'s fenced block either way.
+- **Only writes when content actually changes.** The extractor compares
+  against what's already on disk first — avoids needless file-mtime churn
+  and incremental-build invalidation on every single build.
+- **Must run during Restore, not a normal Build-pass Target.** This is the
+  one genuinely non-obvious part: Reqnroll computes required per-item
+  metadata (`CodeBehindFile`, `MessagesFile`, `NormalizedLogicalName`,
+  etc.) on `ReqnrollFeatureFile` items via `<ItemGroup>` transforms that
+  run once, at project-*evaluation* time, in its own imported `.targets`
+  file — not inside any `<Target>`. A `<Target BeforeTargets="BeforeBuild">`
+  that adds `ReqnrollFeatureFile` items at target-*execution* time (tried
+  first) makes those items visible to later targets, but they never
+  receive that metadata — Reqnroll's codegen then silently produces
+  nothing usable and the test assembly ends up with zero discoverable
+  tests, with no error to point at why. `dotnet build`/`dotnet test`
+  always run an implicit `Restore` as a distinct, earlier MSBuild pass
+  first; generating the `.feature` files during that pass
+  (`Target Name="ExtractFeatureDocs" BeforeTargets="Restore"` in
+  `SyncMesh.Bdd.Tests.csproj`) means they already exist on disk by the
+  time the real Build pass evaluates the (ordinary, static)
+  `ReqnrollFeatureFile` glob — exactly as if they were a checked-in file.
+- **Invoked via `dotnet run --project`, not a resolved assembly path.**
+  A `ProjectReference` to `tools/FeatureDocExtractor` with
+  `OutputItemType` looks appealing but its metadata is only populated by
+  `ResolveProjectReferences`, a target that runs *after* `BeforeBuild` —
+  too late for a `BeforeTargets="Restore"` hook, which runs earlier still.
+  `dotnet run --project` sidesteps the whole question by building the
+  tool itself before running it.
 
 ## Local dev environment
 
@@ -393,13 +474,27 @@ ambiguous which phase actually gates it.
 ## Documentation
 
 - **Diagrams**: PlantUML embedded as fenced ` ```plantuml ` code blocks in
-  Markdown (`docs/c4-diagrams.md`, `docs/sequence-diagrams.md`), not
-  standalone `.puml` files — per explicit request. The old
-  `docs/c4-diagrams/` and `docs/sequence-diagrams/` folders were removed.
+  Markdown, not standalone `.puml` files — per explicit request. Per-feature
+  diagrams (sequence diagrams, and any C4 component diagram owned by a
+  single feature) live alongside that feature's design in
+  `docs/bdd/design/*.md`, so each feature's design stands on its own —
+  `docs/c4-diagrams.md` now holds only cross-cutting/not-yet-feature-owned
+  C4 diagrams (System Context, Container Diagram, and the Mesh Monitor
+  Dashboard's component diagram, pending a feature file of its own); the
+  old `docs/sequence-diagrams.md` was retired entirely (2026-07-27) once
+  every diagram it held moved into its owning companion doc(s). Salt for
+  UI wireframes, in `docs/ui-wireframes.md`, layered like C4
+  (context → container → component) rather than one flat mockup.
 - **Doc set**: `docs/00-design-document.md` (architecture/goals/open
   questions) → `docs/05-implementation-guide.md` (static phased plan) →
   `docs/06-data-model.md` (envelope/entity/HLC shapes) →
   `docs/07-operations-guide.md` (ops-owned vs. dev-owned operational
-  concerns) → `docs/adr/` (individual decisions) → `docs/bdd/features/`
-  (executable acceptance criteria). `WORKPLAN.md` tracks phase status
-  against the implementation guide; this file tracks the conventions above.
+  concerns) → `docs/08-deployment-models.md` (shared, cross-feature
+  topology catalog) → **`docs/bdd/design/*.md`** (per-feature,
+  self-contained design docs — use case, sequence diagram, relevant C4
+  excerpt, deployment-model refs, and the Gherkin source of truth) →
+  **`docs/bdd/features/*.feature`** (generated from `docs/bdd/design/*.md`
+  via `tools/FeatureDocExtractor`, wired automatically into
+  `SyncMesh.Bdd.Tests`'s build — never hand-edit) → `docs/adr/`
+  (individual decisions). `WORKPLAN.md` tracks phase status against the
+  implementation guide; this file tracks the conventions above.

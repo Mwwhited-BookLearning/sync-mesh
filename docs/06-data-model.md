@@ -235,3 +235,40 @@ server, a server's configured peers) rather than requiring a
 separately-maintained topology file that could drift out of sync with
 actual configuration — this is what lets `SyncMesh.MeshMonitor.Api` build
 a whole mesh's topology purely from what every node says about itself.
+
+## 7. Event Lineage (Descriptive Provenance)
+
+See ADR-0006. An event can descriptively reference the prior event(s) its
+data was derived/sourced from — genuinely many-to-many (multiple parents,
+multiple children) — purely for audit/traceability. This is **never** an
+ordering or dependency mechanism: HLC ordering (§3) and idempotent apply
+(§4) work exactly as before, unaffected by lineage.
+
+`EventLineage` (`SyncMesh.EventStore.EventLineage`):
+
+| Field | Meaning |
+|---|---|
+| `ChildEventId` | The event whose data was derived from `ParentEventId` |
+| `ParentEventId` | The prior event `ChildEventId`'s data was sourced from |
+
+Composite primary key `(ChildEventId, ParentEventId)` — no duplicate pair,
+plus a secondary index on `ParentEventId` for "children of a given parent"
+lookups. **Deliberately no database-enforced foreign key** to
+`EventRecord.GlobalEventId` in either direction: apply must stay safe
+under out-of-order, at-least-once delivery, and a child event can
+legitimately be applied before its parent arrives via a different mesh
+path. A hard FK would reject that child's apply purely due to a benign
+timing race — see ADR-0006 for the full reasoning.
+
+Referential integrity is instead enforced only at authorship time:
+`LocalEventWriter` validates that every requested `ParentEventId` already
+exists in *that daemon's own* local `EventStoreDbContext` before writing —
+safe today because a daemon's `Events` table is never purged on ack (only
+the JetStream WorkQueue message is).
+
+`EventEnvelope.ParentEventIds` (optional, defaults empty) carries this
+from the daemon's write path through to the server's apply path
+unchanged — `ApplyResponder` inserts the corresponding `EventLineage` rows
+alongside the `EventRecord` insert, gated by the exact same
+already-applied idempotency check that protects `EventRecord` itself, so
+lineage rows can never be double-inserted for the same event.

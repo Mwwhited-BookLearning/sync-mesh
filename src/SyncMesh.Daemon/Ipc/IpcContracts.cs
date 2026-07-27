@@ -11,6 +11,11 @@ public sealed class AppendEventRequest
     public required string EventType { get; init; }
     public required string PayloadJson { get; init; }
     public int PayloadSchemaVersion { get; init; } = 1;
+
+    // Optional: GlobalEventIds of prior events this event's data was
+    // derived from/sourced against. Descriptive/audit only — see
+    // docs/06-data-model.md §7.
+    public IReadOnlyList<Guid> ParentEventIds { get; init; } = [];
 }
 
 public sealed class AppendEventResponse

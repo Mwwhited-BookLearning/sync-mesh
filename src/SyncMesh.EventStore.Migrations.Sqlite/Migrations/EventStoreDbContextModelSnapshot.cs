@@ -17,6 +17,21 @@ namespace SyncMesh.EventStore.Migrations.Sqlite.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
+            modelBuilder.Entity("SyncMesh.EventStore.EventLineage", b =>
+                {
+                    b.Property<Guid>("ChildEventId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ParentEventId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ChildEventId", "ParentEventId");
+
+                    b.HasIndex("ParentEventId");
+
+                    b.ToTable("EventLineage", (string)null);
+                });
+
             modelBuilder.Entity("SyncMesh.EventStore.EventRecord", b =>
                 {
                     b.Property<Guid>("GlobalEventId")

@@ -89,4 +89,41 @@ public sealed class EventStoreDbContextMigrationTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
     }
+
+    [Fact]
+    public async Task Migrate_EventLineage_RoundTripsAndRejectsDuplicatePair()
+    {
+        var childId = Guid.NewGuid();
+        var parentId = Guid.NewGuid();
+
+        await using (var context = CreateContext())
+        {
+            await context.Database.MigrateAsync();
+            context.EventLineages.Add(new EventLineage { ChildEventId = childId, ParentEventId = parentId });
+            await context.SaveChangesAsync();
+
+            var stored = await context.EventLineages.SingleAsync(l => l.ChildEventId == childId && l.ParentEventId == parentId);
+            Assert.Equal(parentId, stored.ParentEventId);
+        }
+
+        // A fresh context (a different DbContext instance, as a separate
+        // request would use) — the duplicate must be rejected by the DB's
+        // composite PK, not merely by the change tracker's identity map.
+        await using var duplicateContext = CreateContext();
+        duplicateContext.EventLineages.Add(new EventLineage { ChildEventId = childId, ParentEventId = parentId });
+        await Assert.ThrowsAsync<DbUpdateException>(() => duplicateContext.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Migrate_EventLineage_DoesNotEnforceForeignKeyToEventRecord()
+    {
+        await using var context = CreateContext();
+        await context.Database.MigrateAsync();
+
+        // ParentEventId intentionally matches no row in Events — lineage is
+        // descriptive-only and deliberately has no DB-enforced FK (see
+        // docs/adr/0006-event-lineage-descriptive-provenance.md).
+        context.EventLineages.Add(new EventLineage { ChildEventId = Guid.NewGuid(), ParentEventId = Guid.NewGuid() });
+        await context.SaveChangesAsync(); // must not throw
+    }
 }

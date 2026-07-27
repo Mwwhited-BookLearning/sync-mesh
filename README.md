@@ -24,18 +24,23 @@ off to Claude Code for implementation.
 
 ## Diagrams (PlantUML, embedded in Markdown)
 
-- `docs/c4-diagrams.md` — system context (C4 L1), container (C4 L2), and
-  daemon component (C4 L3) diagrams
-- `docs/sequence-diagrams.md` — event recording flow, server mesh
-  reconciliation, and remote monitoring/tunnel fallback flows
+- `docs/c4-diagrams.md` — system context (C4 L1) and container (C4 L2)
+  diagrams, plus any C4 component diagram not yet owned by a single
+  feature (currently: Mesh Monitor Dashboard)
+- `docs/bdd/design/*.md` — per-feature sequence diagrams and any C4
+  component diagram owned by that feature, alongside its use case and
+  Gherkin, so each feature's design stands on its own
+- `docs/ui-wireframes.md` — Salt UI wireframes, layered like C4
+  (context → container → component)
 - `docs/08-deployment-models.md` — deployment topology shapes (client
   isolated, client→on-prem, client→cloud, standalone server, intra-site
   mesh with limited inter-site gateway, full mesh everywhere)
 
-Each diagram is a fenced ` ```plantuml ` block inline in the Markdown file —
-render with any PlantUML renderer (VS Code PlantUML extension, plantuml.com
-server, or local `plantuml.jar`). C4 diagrams pull the C4-PlantUML include
-from GitHub — vendor a local copy if you need offline rendering.
+Each diagram is a fenced ` ```plantuml ` (or ` ```salt `) block inline in
+the Markdown file — render with any PlantUML renderer (VS Code PlantUML
+extension, plantuml.com server, or local `plantuml.jar`). C4 diagrams pull
+the C4-PlantUML include from GitHub — vendor a local copy if you need
+offline rendering.
 
 ## Architecture Decision Records
 
@@ -43,15 +48,23 @@ from GitHub — vendor a local copy if you need offline rendering.
 - `docs/adr/0002-nats-leaf-nodes-for-transport.md`
 - `docs/adr/0003-hybrid-logical-clock-ordering.md`
 - `docs/adr/0004-separate-tunnel-from-event-mesh.md`
+- `docs/adr/0005-mesh-monitor-dashboard.md`
+- `docs/adr/0006-event-lineage-descriptive-provenance.md`
 - `docs/templates/adr-template.md` — use for any new decisions
 
-## BDD Feature Files
+## BDD Feature Design Docs
 
-- `docs/bdd/features/local-durability.feature`
-- `docs/bdd/features/event-ordering-and-idempotency.feature`
-- `docs/bdd/features/nearest-neighbor-sync.feature`
-- `docs/bdd/features/remote-monitoring-tunnel.feature`
-- `docs/templates/feature-template.feature` — use for any new features
+Gherkin is authored in `docs/bdd/design/*.md` (one companion doc per
+feature, each self-contained); `docs/bdd/features/*.feature` is
+**generated** from these via `tools/FeatureDocExtractor` and must never be
+hand-edited (gitignored build output — see `ARCHITECTURE.md` →
+"Feature-doc extraction tooling").
+
+- `docs/bdd/design/local-durability.md`
+- `docs/bdd/design/event-ordering-and-idempotency.md`
+- `docs/bdd/design/nearest-neighbor-sync.md`
+- `docs/bdd/design/remote-monitoring-tunnel.md`
+- `docs/templates/feature-design-template.md` — use for any new features
 
 ## Handing this off to Claude Code
 

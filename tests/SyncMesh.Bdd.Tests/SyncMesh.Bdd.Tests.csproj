@@ -32,13 +32,38 @@
     <ProjectReference Include="..\..\src\SyncMesh.EventStore.Migrations.Sqlite\SyncMesh.EventStore.Migrations.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\SyncMesh.Daemon\SyncMesh.Daemon.csproj" />
     <ProjectReference Include="..\..\src\SyncMesh.ServerHost\SyncMesh.ServerHost.csproj" />
+    <ProjectReference Include="..\..\tools\FeatureDocExtractor\FeatureDocExtractor.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!--
-    Feature files stay in docs/bdd/features/ as the single source of truth
-    (per CLAUDE.md) — linked here rather than duplicated so Reqnroll can
-    generate code-behind and step bindings against them.
+    Feature files are GENERATED from docs/bdd/design/*.md (the actual
+    source of truth — per CLAUDE.md and ARCHITECTURE.md → "Feature-doc
+    extraction tooling") via tools/FeatureDocExtractor, into
+    docs/bdd/features/*.feature, which is gitignored build output — never
+    hand-edit it.
+
+    Generation MUST happen during the implicit Restore pass (BeforeTargets
+    ="Restore"), not a Target hooked into the normal Build pass. Reqnroll
+    computes required per-item metadata (CodeBehindFile, MessagesFile,
+    NormalizedLogicalName, etc.) on ReqnrollFeatureFile items via ItemGroup
+    transforms that run once, at project-EVALUATION time, in its own
+    imported .targets file (see reqnroll.tools.msbuild.generation's
+    Reqnroll.Tools.MsBuild.Generation.targets) — not inside any Target.
+    Items added to that ItemGroup from inside a Build-pass Target (tried
+    first, see git history) are visible to later targets but never receive
+    that metadata, so Reqnroll's codegen silently produces nothing useful
+    and the test assembly ends up with zero discoverable tests. "dotnet
+    build"/"dotnet test" always run an implicit Restore as a distinct,
+    earlier MSBuild pass first — generating the .feature files during that
+    pass means they already exist on disk by the time the real Build pass
+    evaluates the static glob below, so Reqnroll's own evaluation-time
+    metadata transforms see them exactly as they would a checked-in file.
   -->
+  <Target Name="ExtractFeatureDocs" BeforeTargets="Restore">
+    <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)..\..\tools\FeatureDocExtractor\FeatureDocExtractor.csproj&quot; -- &quot;$(MSBuildThisFileDirectory)..\..\docs\bdd\design&quot; &quot;$(MSBuildThisFileDirectory)..\..\docs\bdd\features&quot;" />
+  </Target>
+
   <ItemGroup>
     <ReqnrollFeatureFile Include="..\..\docs\bdd\features\*.feature" Link="Features\%(Filename)%(Extension)" />
   </ItemGroup>

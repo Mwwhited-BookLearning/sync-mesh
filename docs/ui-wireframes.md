@@ -7,7 +7,7 @@ per `CLAUDE.md`'s "Salt for UI wireframes if/when UI work starts."
 Render with any PlantUML renderer that supports Salt (VS Code PlantUML
 extension, plantuml.com server, or local `plantuml.jar`) — fenced
 ` ```plantuml ` blocks render directly out of Markdown, same convention as
-`docs/c4-diagrams.md` and `docs/sequence-diagrams.md`.
+`docs/c4-diagrams.md` and the per-feature diagrams in `docs/bdd/design/*.md`.
 
 ## Why these are layered, not one mockup
 

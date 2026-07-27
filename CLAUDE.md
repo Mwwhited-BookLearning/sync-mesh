@@ -46,11 +46,22 @@ tradeoff explicitly to the human first.
   never leak into this project's core event model.
 - **Diagrams**: PlantUML, embedded as fenced ` ```plantuml ` blocks directly
   in Markdown (not standalone `.puml` files). C4 model for architecture
-  diagrams (`docs/c4-diagrams.md`), Salt for UI wireframes if/when UI work
-  starts.
-- **Behavior specs**: Gherkin/BDD feature files in `docs/bdd/features/`.
-  Treat these as executable acceptance criteria — implement against them,
-  don't just implement and retrofit a feature file afterward.
+  diagrams — per-feature diagrams live alongside that feature's design in
+  `docs/bdd/design/*.md` (each feature stands on its own); `docs/c4-diagrams.md`
+  holds only cross-cutting/not-yet-feature-owned diagrams (System Context,
+  Container Diagram). Salt for UI wireframes, in `docs/ui-wireframes.md`,
+  layered like C4 (context → container → component) rather than one flat
+  mockup.
+- **Behavior specs**: Gherkin/BDD scenarios are authored in
+  `docs/bdd/design/*.md` (one companion doc per feature, each with a
+  fenced ```gherkin``` block — the actual source of truth) alongside that
+  feature's use case, sequence diagram, and deployment-model references.
+  `docs/bdd/features/*.feature` is **generated** from those docs via
+  `tools/FeatureDocExtractor` (wired automatically into
+  `SyncMesh.Bdd.Tests`'s build — see `ARCHITECTURE.md` → "Feature-doc
+  extraction tooling") and must never be hand-edited. Treat these
+  scenarios as executable acceptance criteria — implement against them,
+  don't just implement and retrofit a feature doc afterward.
 - **Docs**: Markdown throughout. Keep design docs and code in sync; if an
   implementation detail changes an ADR's assumption, update the ADR (append,
   don't silently rewrite history — mark superseded ADRs as such). Doc set:
@@ -59,8 +70,9 @@ tradeoff explicitly to the human first.
   `docs/06-data-model.md` (envelope/entity/HLC shapes) →
   `docs/07-operations-guide.md` (ops-owned vs. dev-owned operational
   concerns, e.g. backup/retention) → `docs/08-deployment-models.md`
-  (topology shapes, PlantUML deployment diagrams) → `docs/adr/` (individual
-  decisions) → `docs/bdd/features/` (executable acceptance criteria).
+  (shared, cross-feature topology catalog) → `docs/bdd/design/*.md`
+  (per-feature, self-contained design docs) → `docs/adr/` (individual
+  decisions).
   `WORKPLAN.md` tracks phase status against the implementation guide;
   `ARCHITECTURE.md` tracks engineering conventions established along the
   way.
