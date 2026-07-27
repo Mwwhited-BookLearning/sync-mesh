@@ -1,7 +1,5 @@
 using SyncMesh.MeshMonitor.Api;
 
-const string DevCorsPolicy = "DevCors";
-
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
@@ -16,20 +14,9 @@ builder.Services.AddSingleton<ITopologyStore, TopologyStore>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<MonitorSubscriber>();
 
-// Vite's dev server runs on its own origin — only needed while developing
-// the frontend against `npm run dev`; the built app is served same-origin
-// from wwwroot in every other case, so this never runs outside Development.
-builder.Services.AddCors(options => options.AddPolicy(DevCorsPolicy, policy =>
-    policy.WithOrigins("http://localhost:5173").AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
-
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseCors(DevCorsPolicy);
-}
 
 app.UseDefaultFiles();
 app.UseStaticFiles();

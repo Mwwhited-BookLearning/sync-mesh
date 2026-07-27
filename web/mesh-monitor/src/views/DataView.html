@@ -1,0 +1,40 @@
+<div class="data-view">
+  <el-button
+    :disabled="!refreshCommand.canExecute.value"
+    :loading="refreshCommand.isExecuting.value"
+    @click="refreshCommand.execute"
+  >
+    Refresh
+  </el-button>
+
+  <el-tabs type="border-card" class="data-view__tabs">
+    <el-tab-pane label="Daemons">
+      <el-table :data="daemonRows" row-key="instanceId" stripe>
+        <el-table-column prop="siteId" label="Site" />
+        <el-table-column prop="instanceId" label="Instance" />
+        <el-table-column prop="bufferedEventCount" label="Buffered" />
+        <el-table-column prop="connectedToNearestServer" label="Connected" />
+        <el-table-column prop="nearestServerUrl" label="Nearest Server" />
+        <el-table-column prop="eventsForwardedCount" label="Forwarded" />
+      </el-table>
+    </el-tab-pane>
+
+    <el-tab-pane label="Servers">
+      <el-table :data="serverRows" row-key="instanceId" stripe>
+        <el-table-column prop="siteId" label="Site" />
+        <el-table-column prop="instanceId" label="Instance" />
+        <el-table-column prop="url" label="URL" />
+        <el-table-column prop="eventsAppliedCount" label="Applied" />
+        <el-table-column prop="peerCount" label="Peers" />
+      </el-table>
+    </el-tab-pane>
+
+    <el-tab-pane label="Connections">
+      <el-table :data="connectionRows" row-key="id" stripe>
+        <el-table-column prop="from" label="From" />
+        <el-table-column prop="to" label="To" />
+        <el-table-column prop="eventsForwarded" label="Events" />
+      </el-table>
+    </el-tab-pane>
+  </el-tabs>
+</div>
