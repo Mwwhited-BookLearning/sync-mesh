@@ -169,6 +169,37 @@ don't let it go stale.
   bites ad hoc manual verification against a directly-run container —
   prefer `localhost` over `127.0.0.1` when doing that in this environment.
 
+## Mesh monitor dashboard (ops tooling, not yet phase-tracked)
+
+See `docs/adr/0005-mesh-monitor-dashboard.md` and design doc §4.6 for what
+this is and why it's separate from per-instance remote monitoring (§4.5).
+Conventions specific to `SyncMesh.MeshMonitor.Api`:
+
+- **In-memory topology store, no durability, by design** —
+  `ITopologyStore` is a `ConcurrentDictionary` keyed by `siteId:instanceId`;
+  a dashboard restart just re-learns the topology from the next round of
+  `monitor.*` ticks, the same "nothing to replay" reasoning Phase 4's
+  telemetry itself already relies on.
+- **SignalR is push-only.** `MeshMonitorHub` has no client-callable
+  methods — the browser only listens for `NodeUpdated`; the REST snapshot
+  endpoint (`GET /api/topology`) covers a freshly opened tab's first paint,
+  SignalR covers everything after.
+- **Same outer-retry-loop convention as `EventForwarder`/`MeshForwarder`.**
+  `MonitorSubscriber`'s NATS subscribe loop must not silently die on a
+  fault — same bug class already fixed once in `EventForwarder` (see
+  Daemon → server forwarding above); it was applied here from the start
+  rather than rediscovered.
+- **Dev-only CORS.** The `DevCors` policy (allowing `localhost:5173`,
+  Vite's dev server origin) only applies in `IsDevelopment()` — the
+  built/production path expects the SPA served same-origin from
+  `wwwroot`, no CORS needed. That frontend does not exist yet (see
+  ADR-0005), so today only the Development CORS path is actually
+  reachable.
+- **No authentication yet.** Unlike every other cross-instance connection
+  in this project, `/api/topology` and the SignalR hub currently have no
+  auth — this is a known gap (ADR-0005 Consequences/Follow-up), not an
+  intentional exception to the TLS + service-credential baseline below.
+
 ## Configuration
 
 Every tunable (buffer caps, timeouts, retention, reconnect/backoff, subject

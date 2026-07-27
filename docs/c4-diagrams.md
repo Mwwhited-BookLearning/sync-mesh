@@ -71,6 +71,9 @@ System_Boundary(serverMeshBoundary, "Server Mesh") {
 
 Container(tunnelRelay, "Tunnel/Monitoring Relay", "frp / chisel / overlay network", "Separate failure domain from event sync")
 
+Person(meshOperator, "Mesh Operator")
+Container(meshMonitor, "Mesh Monitor Dashboard", "ASP.NET Core + SignalR + SPA (see ADR-0005)", "Read-only, mesh-wide topology view built from monitor.* telemetry")
+
 Rel(operator, localApp, "Uses")
 Rel(localApp, daemon, "Sends events via", "named pipe / gRPC (local IPC)")
 Rel(daemon, localBuffer, "Buffers into")
@@ -82,9 +85,16 @@ Rel(natsHub, peerServer2, "Gateway / supercluster")
 Rel(remoteUser, daemon, "Direct monitor/tunnel, when reachable")
 Rel(remoteUser, tunnelRelay, "Fallback relay, when blocked")
 Rel(tunnelRelay, natsHub, "Relays through nearest server")
+Rel(meshMonitor, natsHub, "Subscribes to monitor.> (hub side, read-only)")
+Rel(meshOperator, meshMonitor, "Views mesh topology via browser")
 
 @enduml
 ```
+
+Note: `meshMonitor` connects to *a* hub — in a multi-site mesh it observes
+whichever node it's pointed at; monitor subjects cross leaf/gateway
+boundaries the same way event-sync subjects do (§4.5), so one dashboard
+instance can see the whole reachable mesh from a single connection point.
 
 ## Component Diagram — Local Daemon (C4 Level 3)
 
@@ -113,6 +123,38 @@ Rel(jetstream, leafConn, "Delivered via, once acked upstream, entry removed (Wor
 Rel(eventWriter, monitorPublisher, "Emits status/metrics")
 Rel(monitorPublisher, leafConn, "Publishes monitor.* subjects via")
 Rel(tunnelAgent, leafConn, "Signals control state via tunnel.* subjects (separate from event subjects)")
+
+@enduml
+```
+
+## Component Diagram — Mesh Monitor Dashboard (C4 Level 3)
+
+See ADR-0005. Backend only today — the SPA component below is planned, not
+yet built (no `web/mesh-monitor` frontend exists), and there is no
+authentication component in front of the hub or REST endpoint yet.
+
+```plantuml
+@startuml component-mesh-monitor
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram — Mesh Monitor Dashboard (SyncMesh.MeshMonitor.Api)
+
+Container_Boundary(meshMonitorApi, "Mesh Monitor Dashboard — Backend") {
+    Component(monitorSubscriber, "Monitor Subscriber", "NATS client, BackgroundService", "Subscribes to monitor.>, parses DaemonStatus/ServerStatus by NodeKind")
+    Component(topologyStore, "Topology Store", "In-memory ConcurrentDictionary", "Latest-known snapshot per (siteId, instanceId); non-durable by design")
+    Component(topologyApi, "Topology REST Endpoint", "Minimal API", "GET /api/topology — snapshot for a freshly opened tab")
+    Component(monitorHub, "SignalR Hub", "MeshMonitorHub", "Server-push only; broadcasts NodeUpdated to connected tabs")
+    Component(staticFiles, "Static SPA Host", "UseStaticFiles + MapFallbackToFile", "Serves web/mesh-monitor's build output — not yet built")
+}
+
+Component(spa, "Mesh Monitor SPA", "Planned — Vue", "Not yet implemented; see ADR-0005 Consequences") #line.dashed
+
+Rel(monitorSubscriber, topologyStore, "Upserts parsed node")
+Rel(monitorSubscriber, monitorHub, "Pushes NodeUpdated on every message")
+Rel(topologyApi, topologyStore, "Reads snapshot")
+Rel(spa, topologyApi, "Initial load")
+Rel(spa, monitorHub, "Live updates")
+Rel(staticFiles, spa, "Serves build output (once it exists)")
 
 @enduml
 ```

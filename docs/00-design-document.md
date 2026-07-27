@@ -241,6 +241,35 @@ flows (PlantUML source embedded inline in each Markdown file).
   outage must never affect recording durability or event delivery, and
   vice versa.
 
+### 4.6 Mesh Monitor Dashboard (ops tooling)
+
+A distinct concern from §4.5's per-instance remote monitoring: an operator
+wants one live view of the **whole mesh's topology at once** — every
+daemon and server, which are healthy, how they're peered — not a session
+into a single recording instance.
+
+- Read-only and observational only. Grants no control over any instance,
+  and does not use or extend the interactive tunnel (§4.5 / ADR-0004).
+- Built entirely from the telemetry §4.5 already defines
+  (`monitor.<siteId>.<instanceId>.*`) — no new subject namespace, no new
+  wire format. A dashboard instance connects once, at any reachable mesh
+  node, and sees the whole reachable topology through ordinary
+  interest-graph routing, the same way event-sync subjects already cross
+  leaf/gateway boundaries.
+- Non-durable by design: the topology view is a live snapshot rebuilt from
+  ongoing telemetry, not a system of record. Current-state, nothing to
+  replay — same reasoning as the telemetry it's built from.
+- **Not yet reconciled into the phased implementation plan** — this
+  started as ad hoc work after Phase 4 rather than a planned phase. See
+  `WORKPLAN.md` → "Mesh Monitor Dashboard" for status and
+  `docs/adr/0005-mesh-monitor-dashboard.md` for the decision record,
+  including an open question this doc doesn't resolve: whether a bespoke
+  dashboard is the right call here versus off-the-shelf observability
+  tooling (`ARCHITECTURE.md` → Operational vs. development ownership).
+- Diagrams: `docs/c4-diagrams.md` (Container diagram entry + Component
+  diagram), `docs/ui-wireframes.md` (Salt wireframes, layered
+  overview → panel detail).
+
 ## 5. Data Model (summary — full detail in `docs/06-data-model.md`)
 
 Every event carries, at minimum:

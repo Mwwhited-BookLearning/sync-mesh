@@ -201,3 +201,37 @@ public async Task ApplyIncomingEventAsync(EventEnvelope incoming, CancellationTo
 Keep monitoring and tunnel subjects namespaced separately from
 `events.*` so permissions, retention, and failure isolation can be
 configured independently per ADR-0004.
+
+## 6. Monitoring Telemetry Payload Shapes
+
+Published to the `monitor.*` subjects above (§5), current-state only — no
+event envelope, no HLC, nothing to replay. Consumed today by
+`SyncMesh.MonitorClient` (per-instance CLI, Phase 4) and
+`SyncMesh.MeshMonitor.Api` (mesh-wide dashboard, ADR-0005).
+
+**`DaemonStatus`** (`SyncMesh.Contracts.DaemonStatus`) — self-reported by
+a local daemon:
+
+| Field | Meaning |
+|---|---|
+| `SiteId` / `InstanceId` | Identifies which daemon this is (`InstanceId` defaults to machine name) |
+| `TimestampUtc` | When this snapshot was taken |
+| `BufferedEventCount` | Events in the local JetStream WorkQueue stream not yet acked by the nearest server |
+| `LeafConnected` | Whether the embedded leaf node currently has a live connection to its nearest server |
+
+**`ServerStatus`** (`SyncMesh.Contracts.ServerStatus`) — self-reported by
+a server-tier node; the counterpart to `DaemonStatus`:
+
+| Field | Meaning |
+|---|---|
+| `SiteId` / `InstanceId` | Identifies which server this is |
+| `TimestampUtc` | When this snapshot was taken |
+| `Url` | This server's own listening/apply-endpoint URL, so a daemon's nearest-server edge can be matched to this node |
+| `EventsAppliedCount` | Events durably applied here for the first time (from daemons and/or peers combined) |
+| `ConfiguredPeers` | This server's own configured mesh peers (`ServerMeshOptions.Peers`) plus a per-peer forwarded-event count; empty for a standalone server (§4.4) |
+
+Both shapes self-describe their own relationships (a daemon's nearest
+server, a server's configured peers) rather than requiring a
+separately-maintained topology file that could drift out of sync with
+actual configuration — this is what lets `SyncMesh.MeshMonitor.Api` build
+a whole mesh's topology purely from what every node says about itself.
