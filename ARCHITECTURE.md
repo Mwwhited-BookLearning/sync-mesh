@@ -441,6 +441,23 @@ with the env var for exactly this reason.
   and 7798/7799) — same convention the original two-site topology
   already used for its second site; tunnel listeners are plain TCP, not
   Aspire-managed dynamic endpoints.
+- **Every container this run creates gets the same
+  `com.docker.compose.project` label** (`sync-mesh-{deploymentModel}`,
+  set via `.WithContainerRuntimeArgs("--label", ...)` on every
+  `AddContainer(...)` call, including the `order-book-demo` case's
+  4 direct calls) — purely so Docker Desktop's GUI groups them into one
+  nested "project" view instead of flat individual containers, matching
+  how `docker compose`-started containers already display. This is a
+  labeling convenience only, confirmed via `docker inspect`; it doesn't
+  make `docker compose ls` recognize the group (that command tracks its
+  own separate bookkeeping for compose-started projects, not just
+  container labels) — a deliberate, minimal choice over actually
+  adopting Aspire's `Aspire.Hosting.Docker`/`AddDockerComposeEnvironment`
+  publish-as-compose feature, which would require every project resource
+  (`ServerHost`, `Daemon`, etc.) to become a built container image
+  instead of running from source via `dotnet run` — a real loss of the
+  fast source-based dev loop this whole topology depends on, confirmed
+  not wanted before building this.
 - Live-verified (2026-07-28): the default topology unchanged (cross-site
   order convergence still holds exactly as before), plus
   `client-isolated` (daemon runs indefinitely with no responder, no

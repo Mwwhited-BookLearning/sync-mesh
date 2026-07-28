@@ -14,6 +14,13 @@ var deploymentModel = builder.Configuration["DeploymentModel"] ?? "order-book-de
 var dataDir = Path.Combine(builder.AppHostDirectory, ".data");
 Directory.CreateDirectory(dataDir);
 
+// Every container this run creates gets the same com.docker.compose.project
+// label — Docker Desktop groups containers sharing this label into one
+// nested "project" view, the same as if they'd been started via `docker
+// compose`, even though Aspire isn't using compose to run them. Purely a
+// visual/organizational label — doesn't change how anything actually runs.
+var dockerProjectLabel = $"sync-mesh-{deploymentModel}";
+
 // --- Reusable resource-block shapes, used by 2+ of the selectable models
 // below. The "order-book-demo" case deliberately does NOT go through
 // these — it stays byte-for-byte what it always was, so this restructuring
@@ -26,12 +33,14 @@ Directory.CreateDirectory(dataDir);
         .WithBindMount("nats-config/hub.conf", "/etc/nats/nats-server.conf", isReadOnly: true)
         .WithArgs("-c", "/etc/nats/nats-server.conf")
         .WithEndpoint(targetPort: 4222, name: "client", scheme: "tcp")
-        .WithEndpoint(targetPort: 7422, name: "leafnode", scheme: "tcp");
+        .WithEndpoint(targetPort: 7422, name: "leafnode", scheme: "tcp")
+        .WithContainerRuntimeArgs("--label", $"com.docker.compose.project={dockerProjectLabel}");
 
     var leaf = builder.AddContainer($"nats-leaf-{suffix}", "nats", "2-alpine")
         .WithBindMount($"nats-config/leaf-{suffix}.conf", "/etc/nats/nats-server.conf", isReadOnly: true)
         .WithArgs("-c", "/etc/nats/nats-server.conf")
         .WithEndpoint(targetPort: 4222, name: "client", scheme: "tcp")
+        .WithContainerRuntimeArgs("--label", $"com.docker.compose.project={dockerProjectLabel}")
         .WaitFor(hub);
 
     return (hub, leaf);
@@ -46,7 +55,8 @@ IResourceBuilder<ContainerResource> AddStandaloneNats(string name) =>
     builder.AddContainer(name, "nats", "2-alpine")
         .WithBindMount("nats-config/plain-jetstream.conf", "/etc/nats/nats-server.conf", isReadOnly: true)
         .WithArgs("-c", "/etc/nats/nats-server.conf", "--name", name)
-        .WithEndpoint(targetPort: 4222, name: "client", scheme: "tcp");
+        .WithEndpoint(targetPort: 4222, name: "client", scheme: "tcp")
+        .WithContainerRuntimeArgs("--label", $"com.docker.compose.project={dockerProjectLabel}");
 
 // SQLite per instance (ADR-0001's Amendment), explicit SiteId/InstanceId
 // (no usable smart default once more than one instance exists), and
@@ -258,24 +268,28 @@ switch (deploymentModel)
             .WithBindMount("nats-config/hub.conf", "/etc/nats/nats-server.conf", isReadOnly: true)
             .WithArgs("-c", "/etc/nats/nats-server.conf")
             .WithEndpoint(targetPort: 4222, name: "client", scheme: "tcp")
-            .WithEndpoint(targetPort: 7422, name: "leafnode", scheme: "tcp");
+            .WithEndpoint(targetPort: 7422, name: "leafnode", scheme: "tcp")
+            .WithContainerRuntimeArgs("--label", $"com.docker.compose.project={dockerProjectLabel}");
 
         var natsLeafA = builder.AddContainer("nats-leaf-a", "nats", "2-alpine")
             .WithBindMount("nats-config/leaf-a.conf", "/etc/nats/nats-server.conf", isReadOnly: true)
             .WithArgs("-c", "/etc/nats/nats-server.conf")
             .WithEndpoint(targetPort: 4222, name: "client", scheme: "tcp")
+            .WithContainerRuntimeArgs("--label", $"com.docker.compose.project={dockerProjectLabel}")
             .WaitFor(natsHubA);
 
         var natsHubB = builder.AddContainer("nats-hub-b", "nats", "2-alpine")
             .WithBindMount("nats-config/hub.conf", "/etc/nats/nats-server.conf", isReadOnly: true)
             .WithArgs("-c", "/etc/nats/nats-server.conf")
             .WithEndpoint(targetPort: 4222, name: "client", scheme: "tcp")
-            .WithEndpoint(targetPort: 7422, name: "leafnode", scheme: "tcp");
+            .WithEndpoint(targetPort: 7422, name: "leafnode", scheme: "tcp")
+            .WithContainerRuntimeArgs("--label", $"com.docker.compose.project={dockerProjectLabel}");
 
         var natsLeafB = builder.AddContainer("nats-leaf-b", "nats", "2-alpine")
             .WithBindMount("nats-config/leaf-b.conf", "/etc/nats/nats-server.conf", isReadOnly: true)
             .WithArgs("-c", "/etc/nats/nats-server.conf")
             .WithEndpoint(targetPort: 4222, name: "client", scheme: "tcp")
+            .WithContainerRuntimeArgs("--label", $"com.docker.compose.project={dockerProjectLabel}")
             .WaitFor(natsHubB);
 
         // Site A's server. Tunnel ports left at their smart defaults
