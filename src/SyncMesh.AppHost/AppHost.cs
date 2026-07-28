@@ -133,7 +133,22 @@ builder.AddProject<Projects.SyncMesh_Daemon>("daemon-b")
 // bridges them, and only for event replication, not general pub/sub), so
 // covering the whole mesh means one subscription per site's hub, not one
 // shared connection. See MeshMonitorApiOptions.NatsUrls' doc comment.
+// A stable dev-only signing key: Aspire generates one on first run and
+// persists it in this AppHost project's user-secrets, so it's the same
+// value across restarts (retrieve it with `dotnet user-secrets list
+// --project src/SyncMesh.AppHost` to mint a test JWT signed with it) —
+// unlike the Postgres password issue this AppHost previously hit, there's
+// no separate persisted container state for this value to fall out of
+// sync with. See docs/adr/0009-ticket-based-signalr-auth.md — this
+// dashboard still doesn't issue tokens itself, this key only lets a
+// pre-minted test JWT validate against this dev topology.
+var meshMonitorSigningKey = builder.AddParameter(
+    "mesh-monitor-signing-key",
+    new GenerateParameterDefault { MinLength = 44, Special = false },
+    secret: true);
+
 builder.AddProject<Projects.SyncMesh_MeshMonitor_Api>("mesh-monitor-api")
+    .WithEnvironment("MeshMonitor__Auth__SigningKey", meshMonitorSigningKey)
     .WithEnvironment(context =>
     {
         var endpointA = natsHubA.GetEndpoint("client");

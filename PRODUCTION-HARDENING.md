@@ -33,6 +33,12 @@ ADR-0002, and ADR-0004.
   TCP, unauthenticated, by design, since Phase 5. Same baseline decision
   applies (see `docs/adr/0004-separate-tunnel-from-event-mesh.md`'s
   Amendment and `docs/adr/0007-custom-reverse-tunnel-mechanism.md`).
+- **`SyncMesh.MeshMonitor.Api`**: application-layer auth (bearer token +
+  ticket exchange, see `docs/adr/0009-ticket-based-signalr-auth.md`) is
+  now built, but the transport itself is still plain HTTP/WebSocket —
+  both the bearer token (once, at ticket issuance) and the ticket value
+  cross the wire in cleartext without TLS. TLS termination for this
+  dashboard is still this section's concern, not resolved by ADR-0009.
 - **What a real deployment would still need**: `SslStream`/TLS
   termination on every connection listed above; certificate provisioning
   and rotation; a bearer-token or mTLS service-credential handshake

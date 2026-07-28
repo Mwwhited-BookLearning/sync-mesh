@@ -27,7 +27,7 @@ tooling"). New feature work should add a companion doc under
 | 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.md](docs/bdd/design/local-durability.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md), [PRODUCTION-HARDENING.md](PRODUCTION-HARDENING.md) (buffer cap sizing — resolved) |
 | 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md) (includes Server Mesh Reconciliation diagram) |
 | 4 — Passive Monitoring | ✅ Done | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) |
-| Ancillary — Mesh Monitor Dashboard | ✅ Done (auth deferred to PRODUCTION-HARDENING.md, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [UI-ARCHITECTURE.md](UI-ARCHITECTURE.md) |
+| Ancillary — Mesh Monitor Dashboard | ✅ Done (TLS deferred to PRODUCTION-HARDENING.md, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [UI-ARCHITECTURE.md](UI-ARCHITECTURE.md) |
 | Ancillary — Event Lineage (Provenance) Schema | ✅ Done | [ADR-0006](docs/adr/0006-event-lineage-descriptive-provenance.md), [Data model §7](docs/06-data-model.md) |
 | 5 — Interactive Tunnel + Relay Fallback | ✅ Done | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [ADR-0007](docs/adr/0007-custom-reverse-tunnel-mechanism.md), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram) |
 | Ancillary — Order Book Demo (Commands/Queries/CQRS) | ✅ Done | [Data model §8](docs/06-data-model.md), `src/SyncMesh.OrderBook.Api` |
@@ -64,13 +64,17 @@ sandbox" and `UI-ARCHITECTURE.md` (frontend-specific).
       "DCP hang" diagnosis in this session was wrong; the real cause was
       a Postgres password/data-volume mismatch plus two other Aspire/DCP
       orchestration issues, all fixed).
-- [x] **Deployment-model sandbox**: `docker-compose.yml` (repo root, one
-      Compose profile per model in `docs/08-deployment-models.md`) +
-      `Properties/launchSettings.json` profiles on `SyncMesh.Daemon`/
-      `SyncMesh.ServerHost`, one per node-role per model. Mesh-model nodes
-      each get their own Postgres database (not shared), so convergence
-      is genuinely proven. Smoke-tested `client-onprem` fully live: real
-      event, real daemon, real server, real Postgres row. How-to in
+- [x] **Deployment-model sandbox**: one standalone Compose file per model
+      under `deploy/compose/` (`docs/08-deployment-models.md`'s six
+      shapes — no `--profile` flag needed, just `-f
+      deploy/compose/<model>.yml`), plus a repo-root `docker-compose.yml`
+      composite that `include:`s all six (a plain `docker compose up -d`
+      there starts every model at once) + `Properties/launchSettings.json`
+      profiles on `SyncMesh.Daemon`/`SyncMesh.ServerHost`, one per
+      node-role per model. Mesh-model nodes each get their own Postgres
+      database (not shared), so convergence is genuinely proven.
+      Smoke-tested `client-onprem` fully live: real event, real daemon,
+      real server, real Postgres row. How-to in
       `docs/10-running-deployment-models.md`.
 
 ## Phase 0 — Project Setup
@@ -295,20 +299,26 @@ gateway-count decision, and offline/batch reconciliation design).
 Work outside the numbered phase plan — additive/layered on top of already-
 closed phases, not a reopening of their exit criteria.
 
-### Mesh Monitor Dashboard ✅ Done (auth deferred to PRODUCTION-HARDENING.md)
+### Mesh Monitor Dashboard ✅ Done (TLS deferred to PRODUCTION-HARDENING.md)
 
 See [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md) (Accepted, per its
-2026-07-27 Amendments) and "Developer tooling built alongside the phases"
-above for the full, current status. As of 2026-07-27: backend, frontend
-(Vue 3 + Element Plus + vis-network), frontend test coverage, and a
-backend test project (`tests/SyncMesh.MeshMonitor.Tests` — `TopologyStore`
-fold logic + `MonitorSubscriber` parsing, 9 tests) are all built; the
-dual-hub telemetry gap (only site A's NATS hub was subscribed to) is
-fixed (`MeshMonitorApiOptions.NatsUrls`, one subscribe loop per site); and
-the live two-site AppHost topology has been confirmed running end to end,
-this dashboard included. Authentication on `/api/topology`/the SignalR
-hub remains deferred to `PRODUCTION-HARDENING.md`, not tracked as a gap
-here.
+Amendments) and "Developer tooling built alongside the phases" above for
+the full, current status. As of 2026-07-28: backend, frontend (Vue 3 +
+Element Plus + vis-network), frontend test coverage, and a backend test
+project (`tests/SyncMesh.MeshMonitor.Tests` — `TopologyStore` fold logic,
+`MonitorSubscriber` parsing, `TicketStore`/`TicketHasher`, 18 tests) are
+all built; the dual-hub telemetry gap (only site A's NATS hub was
+subscribed to) is fixed (`MeshMonitorApiOptions.NatsUrls`, one subscribe
+loop per site); the live two-site AppHost topology has been confirmed
+running end to end, this dashboard included; and both `/api/topology` and
+the SignalR hub now require authentication — a bearer token, or a
+short-lived single-use ticket exchanged for one so the token never has to
+appear in the SignalR connection URL (see
+[ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md), live-verified
+end to end: minted a JWT, exchanged it for a ticket, redeemed the ticket
+via `?ticket=` with no bearer token present, confirmed a second
+redemption attempt correctly fails). TLS for this dashboard remains
+deferred to `PRODUCTION-HARDENING.md`, not resolved by adding auth.
 
 ### Event Lineage (Provenance) Schema ✅ Done
 

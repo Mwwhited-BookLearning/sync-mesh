@@ -112,11 +112,13 @@ basis — this ADR's core mechanism (in-memory topology store, SignalR
 push, REST snapshot, telemetry-only, no new subjects) stands as built,
 not just as designed.
 
-**Still open, unaffected by this amendment** (Follow-up items 3–4 from
-the original Consequences remain outstanding, not resolved by building
-the frontend):
-- No authentication on `/api/topology` or the SignalR hub — explicitly
-  deferred to `PRODUCTION-HARDENING.md`, not tracked here.
+**Resolved by a later pass (2026-07-28)**:
+- **Authentication added**: both `/api/topology` and `MeshMonitorHub` now
+  require either a bearer token or a redeemed ticket — see
+  [ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md) for the ticket-
+  exchange design (built specifically so a bearer token never has to
+  appear in the SignalR connection URL). TLS is still not part of this —
+  that remains tracked in `PRODUCTION-HARDENING.md`, unaffected.
 
 **Resolved by a later pass (2026-07-27)**:
 - **Dual-hub telemetry gap fixed**: `MeshMonitorApiOptions.NatsUrl`

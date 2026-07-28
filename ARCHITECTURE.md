@@ -280,22 +280,43 @@ per-instance remote monitoring (§4.5).
     built/production path serves the SPA same-origin from `wwwroot`
     (populated automatically on `dotnet build`, not just `publish` — see
     `UI-ARCHITECTURE.md`), no CORS needed there.
-  - **No authentication yet.** Unlike every other cross-instance
-    connection in this project, `/api/topology` and the SignalR hub
-    currently have no auth — tracked in `PRODUCTION-HARDENING.md`, not an
-    intentional exception to the TLS + service-credential baseline below.
-- **`docker-compose.yml` (repo root) + `Properties/launchSettings.json`
-  profiles** on `SyncMesh.Daemon`/`SyncMesh.ServerHost` let any of the six
-  documented deployment models be stood up by hand for manual
-  observation — see `docs/10-running-deployment-models.md`. Mesh-model
-  nodes (intra-site-mesh, full-mesh) each get their own Postgres database
-  (not a shared one) specifically so convergence is genuinely proven
-  across independently-stored history, consistent with `ServerHost`
-  remaining Postgres/SqlServer-only at the server tier for *this*
-  docker-compose sandbox (provisioning one database per node was the
-  correct fix here, not loosening that convention) — contrast with the
-  Aspire `AppHost` topology below, which took the opposite call for a
-  different reason.
+  - **Ticket-exchange authentication.** `/api/topology` and the SignalR
+    hub both require either a bearer token or a redeemed ticket — see
+    [ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md) →
+    `src/SyncMesh.MeshMonitor.Api/Auth/`. Built specifically so a bearer
+    token never has to appear in the SignalR connection URL (the standard
+    `?access_token=` pattern is what this replaces): `POST /auth/ticket`
+    (requires the real bearer token, via header) exchanges a client-
+    generated one-time secret for a server-generated `ticketId`; the
+    client independently computes `HMAC-SHA256(key: secret, message:
+    ticketId)` and presents *that* — never the raw `ticketId`, never the
+    bearer token — as `?ticket=` (or `Authorization: Ticket <hash>` for
+    non-browser callers). `TicketAuthenticationHandler` redeems it exactly
+    once (`ITicketStore.TryRedeem` — remove-then-check, so a ticket can't
+    be raced or retried) and authenticates the request as the original
+    bearer token's identity. TLS is still not part of this — the token
+    and ticket both still cross the wire in cleartext, tracked in
+    `PRODUCTION-HARDENING.md`, unaffected by this addition.
+- **`deploy/compose/*.yml` + `Properties/launchSettings.json` profiles**
+  on `SyncMesh.Daemon`/`SyncMesh.ServerHost` let any of the six documented
+  deployment models be stood up by hand for manual observation — see
+  `docs/10-running-deployment-models.md`. Each model has its own
+  standalone Compose file (no `--profile` flag needed); the repo-root
+  `docker-compose.yml` is a composite that `include:`s all six, so a
+  plain `docker compose up -d` there starts every model's infrastructure
+  at once (each model's ports are pre-allocated distinctly, so nothing
+  conflicts). Splitting this way (rather than one file with a
+  `profiles:` tag per service) means a single model's file is directly
+  runnable on its own with no flags to remember, while the composite
+  stays a thin `include:` list instead of duplicating every service
+  definition. Mesh-model nodes (intra-site-mesh, full-mesh) each get
+  their own Postgres database (not a shared one) specifically so
+  convergence is genuinely proven across independently-stored history,
+  consistent with `ServerHost` remaining Postgres/SqlServer-only at the
+  server tier for *this* docker-compose sandbox (provisioning one
+  database per node was the correct fix here, not loosening that
+  convention) — contrast with the Aspire `AppHost` topology below, which
+  took the opposite call for a different reason.
 
 ### AppHost dev topology: server tier runs on SQLite
 
@@ -672,7 +693,7 @@ and a fenced ```gherkin``` block) and `tools/FeatureDocExtractor`.
   the AppHost topology's `ServerHost` instances run on SQLite (see
   "AppHost dev topology: server tier runs on SQLite" above); SQL Server
   and Postgres both remain supported by `ServerHost` via config for
-  other deployment models (`docker-compose.yml`), just not stood up
+  other deployment models (`deploy/compose/*.yml`), just not stood up
   inside `SyncMesh.AppHost` itself.
 - **Orphaned `dcp` processes can hang container startup** (observed in
   this sandboxed dev environment, not necessarily elsewhere): killing the
