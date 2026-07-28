@@ -166,7 +166,13 @@ the *why*; this section is the frontend-specific *how*.
 
 `vite.config.ts` proxies `/api` and `/hubs` (including WebSocket upgrade)
 to `SyncMesh.MeshMonitor.Api`'s default `http` launch profile port
-(`5129`). Every browser-side request stays same-origin (Vite's own dev
+(`5129`) by default, or to `VITE_MESHMONITOR_API_URL` when that
+environment variable is set — which `SyncMesh.AppHost` does automatically
+when it starts this dev server as its own `mesh-monitor-web` Aspire
+resource (`AddViteApp`, see `ARCHITECTURE.md` → "AppHost: `web/mesh-monitor`
+runs as its own live dev-server resource"), so the proxy target tracks
+the API's real dynamically-assigned port instead of the hardcoded
+default. Every browser-side request stays same-origin (Vite's own dev
 port), so the backend needs **no CORS configuration at all** — this was a
 deliberate simplification over the CORS-policy approach originally
 sketched, once the proxy made it unnecessary. In production, the built
@@ -215,7 +221,10 @@ separate `Publish`-time step stopped being necessary and was removed.
 
 **During local frontend iteration**, still use `npm run dev` in
 `web/mesh-monitor` (`http://localhost:5173`, proxying to the API) rather
-than rebuilding via `dotnet build` on every change — the MSBuild target
+than rebuilding via `dotnet build` on every change — or let
+`SyncMesh.AppHost` start it for you as the `mesh-monitor-web` resource
+(no separate terminal, and the proxy target tracks the API's real port
+automatically). Either way the MSBuild target
 is what makes `dotnet run`/AppHost serve *something* correct without
 extra steps, not a replacement for Vite's hot-reloading dev loop.
 

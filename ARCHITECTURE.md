@@ -387,17 +387,23 @@ still gets the original Order Book demo topology —
 `builder.Configuration["DeploymentModel"] ?? "order-book-demo"` in
 `AppHost.cs` is what guarantees that, independent of anything else.
 
-**The env var, not a launch profile, is the documented/portable
-mechanism.** `src/SyncMesh.AppHost/Properties/launchSettings.json` also
-has one profile per model (nicer for a local run/debug dropdown), but
-every `launchSettings.json` in this repo is gitignored
-(`**/Properties/launchSettings.json`) — a pre-existing, repo-wide
-convention (confirmed: none of `SyncMesh.MeshMonitor.Api`/`SyncMesh
-.OrderBook.Api`'s existing launchSettings.json files are tracked in git
-either), not something introduced for this feature. A profile created on
-one machine doesn't exist on a fresh clone or anyone else's checkout —
-the env var does, since it needs nothing committed at all. Docs lead
-with the env var for exactly this reason.
+**The env var is the only mechanism — deliberately no
+`Properties/launchSettings.json` for `SyncMesh.AppHost`.** A
+launch-profile-per-model version (one profile per model, each setting
+`DeploymentModel`) was tried and reverted: Visual Studio's F5/Aspire
+debugging integration expects a specific scaffolded shape (a first
+profile named `"https"`, carrying `applicationUrl` plus
+`ASPNETCORE_ENVIRONMENT`/`DOTNET_ENVIRONMENT`) to correctly orchestrate
+the debug session, and a `launchSettings.json` missing that shape broke
+F5 debugging entirely (breakpoints never hit). Since every
+`launchSettings.json` in this repo is gitignored anyway
+(`**/Properties/launchSettings.json` — a pre-existing, repo-wide
+convention, not something introduced for this feature), a profile
+wouldn't have been portable to a fresh clone even if it worked. The env
+var needs nothing committed at all and keeps F5 working — see
+`docs/10-running-deployment-models.md` → "Option A" for the per-machine
+alternative (set `DeploymentModel` in Visual Studio's own Debug →
+Environment Variables project properties instead).
 
 - **Found while building this**: `docs/10-running-deployment-models.md`
   referenced named `SyncMesh.Daemon`/`SyncMesh.ServerHost` launch profiles
@@ -466,6 +472,47 @@ with the env var for exactly this reason.
   start cleanly with pairwise peers configured). `client-cloud` and
   `intra-site-mesh` reuse the identical code paths as `client-onprem` and
   `full-mesh` respectively and were not separately smoke-tested.
+
+### AppHost: `web/mesh-monitor` runs as its own live dev-server resource
+
+The `order-book-demo` topology now also starts `web/mesh-monitor`'s own
+Vite dev server (`npm run dev`, hot module reload) as a first-class
+Aspire resource named `mesh-monitor-web`, via the
+`Aspire.Hosting.JavaScript` package's `AddViteApp("mesh-monitor-web",
+"../../web/mesh-monitor")`. This is additive, not a replacement:
+`SyncMesh.MeshMonitor.Api`'s existing `wwwroot`-served pre-built bundle
+is untouched and still what a plain `dotnet run`/publish of just that
+project gets, with no Aspire or Node.js involved at all.
+
+- **Why add it**: without this, the only way to see live frontend
+  changes while `AppHost` orchestrates the rest of the topology was to
+  run `npm run dev` by hand in a separate terminal and guess/hardcode
+  `mesh-monitor-api`'s port. Aspire already knows that port (it's
+  dynamically assigned); wiring the frontend in lets it pass it through
+  automatically.
+- **How the backend URL reaches the dev server**: `.WithEnvironment("VITE_MESHMONITOR_API_URL",
+  meshMonitorApi.GetEndpoint("http"))` on the `AddViteApp` resource sets
+  a real environment variable in the `npm run dev` child process.
+  `web/mesh-monitor/vite.config.ts` reads it via plain `process.env`
+  (this file runs in Node at dev-server-startup, not in the browser, so
+  `import.meta.env` — Vite's browser-side build-time substitution —
+  doesn't apply here) and uses it as the proxy target for `/api` and
+  `/hubs`, falling back to the standalone `npm run dev` workflow's
+  default port (`http://localhost:5129`) when the variable isn't set at
+  all. See `UI-ARCHITECTURE.md` for the standalone workflow this falls
+  back to.
+- **`AddViteApp` runs its own `npm install` first** as a separate,
+  short-lived `mesh-monitor-web-installer` resource that the main
+  `mesh-monitor-web` resource waits on — this is `Aspire.Hosting
+  .JavaScript`'s own built-in behavior, not something added here.
+- Live-verified (2026-07-28): `aspire run --detach` brings
+  `mesh-monitor-web` to `Running`, the underlying process is a genuine
+  `npm run dev` → `vite.js` child (confirmed via the OS process list,
+  not just Aspire's reported state), the dev server serves the app's
+  `index.html` on its assigned port, and a request through its `/api`
+  proxy reaches `mesh-monitor-api`'s real dynamically-assigned endpoint
+  and returns `200` — confirming `VITE_MESHMONITOR_API_URL` threads
+  through correctly end-to-end, not just at the config-file level.
 
 ## Event lineage (provenance)
 

@@ -35,17 +35,20 @@ see `ARCHITECTURE.md` → "AppHost: selectable deployment-model topologies"
 for the implementation. Server tier is SQLite here (ADR-0001's
 Amendment), not Postgres, consistent with the rest of `SyncMesh.AppHost`.
 
-**`src/SyncMesh.AppHost/Properties/launchSettings.json`** has one profile
-per model too (`dotnet run --project src/SyncMesh.AppHost --launch-profile
-client-isolated`, or pick it from Visual Studio/VS Code's run dropdown) —
-purely a local convenience on top of the same env var, **not** something
-a fresh clone will have: every `launchSettings.json` in this repo is
-gitignored (`**/Properties/launchSettings.json` — a pre-existing,
-repo-wide convention, not specific to this file), so this file exists
-only on whichever machine created it. The `DeploymentModel` environment
-variable above is the one thing guaranteed to work anywhere; recreate
-the launch-profile file locally (one profile per row above, each just
-setting `DeploymentModel`) if you want the dropdown convenience.
+**Deliberately no `Properties/launchSettings.json` for `SyncMesh.AppHost`.**
+A launch-profile-per-model version was tried and reverted: Visual
+Studio's F5/Aspire debugging integration expects a specific scaffolded
+shape (a first profile named `"https"`, carrying `applicationUrl` plus
+`ASPNETCORE_ENVIRONMENT`/`DOTNET_ENVIRONMENT`) to correctly orchestrate
+the debug session, and a `launchSettings.json` missing that shape broke
+F5 debugging entirely (breakpoints never hit). Since every
+`launchSettings.json` in this repo is gitignored anyway (a pre-existing,
+repo-wide convention — not committed, not portable to a fresh clone),
+the `DeploymentModel` environment variable above is the only
+mechanism, and the one guaranteed to keep F5 working. If you want a
+per-machine convenience, set `DeploymentModel` in Visual Studio's own
+Debug → Environment Variables project properties instead of adding a
+custom `launchSettings.json`.
 
 ## Option B: standalone Compose + manual `dotnet run`
 

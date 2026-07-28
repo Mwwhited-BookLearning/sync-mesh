@@ -82,21 +82,30 @@ sandbox" and `UI-ARCHITECTURE.md` (frontend-specific).
       selected by setting one environment variable — `DeploymentModel=
       client-isolated dotnet run --project src/SyncMesh.AppHost` — as an
       easier alternative to Option B above (one command, no manual
-      Compose + per-project env-var wiring). A local
-      `launchSettings.json` profile per model also exists for dropdown
-      convenience, but — like every `launchSettings.json` in this repo —
-      it's gitignored and won't exist on a fresh clone, so the env var is
-      the documented/portable mechanism, not the profile. Leaving
-      `DeploymentModel` unset still gets the original, unchanged two-site
-      Order Book demo topology. See `ARCHITECTURE.md` → "AppHost:
-      selectable deployment-model topologies" and `docs/10-running-
-      deployment-models.md` → "Option A". Live-verified: the default
-      topology unaffected (cross-site convergence still holds), plus
-      `client-isolated`, `standalone-server`, `client-onprem`, and
-      `full-mesh` each start correctly with real event flow where
-      applicable; `client-cloud`/`intra-site-mesh` share identical code
-      paths with `client-onprem`/`full-mesh` and weren't separately
-      smoke-tested.
+      Compose + per-project env-var wiring). Deliberately no
+      `Properties/launchSettings.json` for `SyncMesh.AppHost` — a
+      profile-per-model version was tried and reverted because it broke
+      Visual Studio's F5/Aspire debugging (breakpoints never hit; VS's
+      integration expects a specific scaffolded shape this didn't have).
+      The env var is the only mechanism, and the one guaranteed to keep
+      F5 working. Leaving `DeploymentModel` unset still gets the
+      original, unchanged two-site Order Book demo topology. See
+      `ARCHITECTURE.md` → "AppHost: selectable deployment-model
+      topologies" and `docs/10-running-deployment-models.md` →
+      "Option A". Live-verified: the default topology unaffected
+      (cross-site convergence still holds), plus `client-isolated`,
+      `standalone-server`, `client-onprem`, and `full-mesh` each start
+      correctly with real event flow where applicable;
+      `client-cloud`/`intra-site-mesh` share identical code paths with
+      `client-onprem`/`full-mesh` and weren't separately smoke-tested.
+- [x] **`web/mesh-monitor` wired into `SyncMesh.AppHost` as its own
+      resource** (2026-07-28), via `Aspire.Hosting.JavaScript`'s
+      `AddViteApp` — the live `npm run dev` server with hot reload, not
+      just the pre-built static bundle `SyncMesh.MeshMonitor.Api` serves
+      from `wwwroot` (that path is untouched, still what a plain
+      `dotnet run`/publish of just the API project gets, no Aspire
+      required). `VITE_MESHMONITOR_API_URL` carries the backend's actual
+      dynamically-assigned endpoint into `vite.config.ts`'s proxy config.
 
 ## Phase 0 — Project Setup
 

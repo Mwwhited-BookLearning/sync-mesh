@@ -386,7 +386,7 @@ switch (deploymentModel)
             new GenerateParameterDefault { MinLength = 44, Special = false },
             secret: true);
 
-        builder.AddProject<Projects.SyncMesh_MeshMonitor_Api>("mesh-monitor-api")
+        var meshMonitorApi = builder.AddProject<Projects.SyncMesh_MeshMonitor_Api>("mesh-monitor-api")
             .WithEnvironment("MeshMonitor__Auth__SigningKey", meshMonitorSigningKey)
             .WithEnvironment(context =>
             {
@@ -397,6 +397,22 @@ switch (deploymentModel)
             })
             .WaitFor(natsHubA)
             .WaitFor(natsHubB);
+
+        // web/mesh-monitor's own live dev server (npm run dev, hot reload),
+        // orchestrated as its own Aspire resource rather than only the
+        // pre-built static bundle mesh-monitor-api serves from wwwroot (that
+        // serving path is untouched — still what a plain `dotnet run`/
+        // publish of just SyncMesh.MeshMonitor.Api gets, no Aspire
+        // required). VITE_MESHMONITOR_API_URL carries the backend's actual
+        // (dynamically-assigned) endpoint into vite.config.ts's own Node
+        // process — read via plain `process.env`, not `import.meta.env`
+        // (that's for application code in the browser; vite.config.ts runs
+        // in Node at dev-server-startup, where the literal env var is
+        // already there) — see UI-ARCHITECTURE.md.
+        builder.AddViteApp("mesh-monitor-web", "../../web/mesh-monitor")
+            .WithReference(meshMonitorApi)
+            .WithEnvironment("VITE_MESHMONITOR_API_URL", meshMonitorApi.GetEndpoint("http"))
+            .WaitFor(meshMonitorApi);
 
         // Order book demo (SyncMesh.OrderBook.Api) — commands route through
         // either daemon's IPC pipe; the read model is built by polling ONLY site
