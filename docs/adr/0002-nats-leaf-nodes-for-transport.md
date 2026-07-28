@@ -140,9 +140,10 @@ this bears on Open Question 2.
 - **All connections — leaf, gateway, and the Tier X tunnel/relay — use TLS
   and authenticate with registered service credentials scoped to the
   daemon/server instance, never end-user identity/permissions.** See
-  design doc §4.4–4.5 and Open Question 5 (the full tunnel security review
-  remains required before production; this is the transport-level
-  baseline it builds on).
+  design doc §4.4–4.5 (this is the transport-level baseline the full
+  tunnel security review builds on; see `PRODUCTION-HARDENING.md` at the
+  repo root for that review's status and everything else deferred
+  wholesale out of this PoC's scope).
 
 ## Amendment (2026-07-23, Phase 3) — server-mesh replication mechanism
 

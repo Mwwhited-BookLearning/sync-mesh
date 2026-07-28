@@ -196,16 +196,22 @@ public async Task ApplyIncomingEventAsync(EventEnvelope incoming, CancellationTo
 |---|---|
 | Event sync (daemon → server, server → server) | `events.<originSiteId>.<streamId>` |
 | Monitoring/telemetry | `monitor.<siteId>.<instanceId>.<metric>` |
-| Tunnel signaling (not the tunnel data itself) | `tunnel.<siteId>.<instanceId>.control` |
+| Tunnel telemetry (current-state only — see below) | `tunnel.<siteId>.<instanceId>.control` |
 
 Keep monitoring and tunnel subjects namespaced separately from
 `events.*` so permissions, retention, and failure isolation can be
 configured independently per ADR-0004.
 
+Despite the "control" name, the `tunnel.*` subject is **telemetry only**
+— see `TunnelStatus` below. Real tunnel session-establishment signaling
+(the Hello/OpenDataChannel/etc. handshake) lives entirely inside the
+plain-TCP tunnel mechanism itself and never touches NATS — see
+`docs/adr/0007-custom-reverse-tunnel-mechanism.md`.
+
 ## 6. Monitoring Telemetry Payload Shapes
 
-Published to the `monitor.*` subjects above (§5), current-state only — no
-event envelope, no HLC, nothing to replay. Consumed today by
+Published to the `monitor.*`/`tunnel.*` subjects above (§5), current-state
+only — no event envelope, no HLC, nothing to replay. Consumed today by
 `SyncMesh.MonitorClient` (per-instance CLI, Phase 4) and
 `SyncMesh.MeshMonitor.Api` (mesh-wide dashboard, ADR-0005).
 
@@ -235,6 +241,18 @@ server, a server's configured peers) rather than requiring a
 separately-maintained topology file that could drift out of sync with
 actual configuration — this is what lets `SyncMesh.MeshMonitor.Api` build
 a whole mesh's topology purely from what every node says about itself.
+
+**`TunnelStatus`** (`SyncMesh.Contracts.TunnelStatus`) — self-reported by
+a local daemon's tunnel agent; published on `tunnel.<siteId>.<instanceId>.control`
+(§5), not `monitor.*`, since it's the tunnel mechanism's own telemetry:
+
+| Field | Meaning |
+|---|---|
+| `SiteId` / `InstanceId` | Identifies which daemon this is |
+| `TimestampUtc` | When this snapshot was taken |
+| `ConnectedToRelay` | Whether the daemon's `TunnelAgent` currently has a live outbound control connection to its relay |
+| `RelayUrl` | Self-reported `TunnelAgentOptions.RelayUrl`, so a monitor can match this daemon to the server hosting its relay |
+| `SessionActive` | Whether a direct or relayed tunnel session is currently piping bytes (one active session per daemon — see ADR-0007) |
 
 ## 7. Event Lineage (Descriptive Provenance)
 

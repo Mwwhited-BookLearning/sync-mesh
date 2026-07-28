@@ -223,21 +223,23 @@ tunnel-fallback sequence diagrams live alongside each feature's design in
   needed; existing interest-graph routing carries it through leaf/gateway
   connections.
 - Interactive tunnel (remote desktop / raw TCP / live control): a
-  **separate** mechanism from the event mesh — a reverse-tunnel/relay tool
-  (e.g. self-hosted `frp`/`chisel`, or an overlay network such as
-  WireGuard/Tailscale-style tooling). Attempt direct connectivity first;
-  fall back to relaying through the nearest server when firewalls block
-  direct access.
-- **Security baseline (decided, ahead of the full review in Open Question
-  5)**: the tunnel/relay path must be TLS-secured, and — like the rest of
-  the mesh (§4.4) — authenticates with **registered service credentials**,
-  not end-user permissions. A remote user's own identity/authorization for
-  *what they're allowed to view or control* is a separate, additional
-  layer on top of this — the transport-level connection itself never rides
-  on end-user credentials. This doesn't replace the dedicated security
-  review still required before production (attack surface, session
-  hijacking risk, the remote-user authorization layer itself) — it's the
-  baseline that review builds on.
+  **separate** mechanism from the event mesh, attempting direct
+  connectivity first and falling back to relaying through the nearest
+  server when firewalls block direct access. See
+  `docs/adr/0007-custom-reverse-tunnel-mechanism.md` for the concrete
+  Phase 5 mechanism (a custom plain-TCP reverse tunnel, one active session
+  per daemon for this phase).
+- **Security baseline (decided; full review and TLS/credential wiring
+  tracked in `PRODUCTION-HARDENING.md`)**: the tunnel/relay path must be
+  TLS-secured, and — like the rest of the mesh (§4.4) — authenticates with
+  **registered service credentials**, not end-user permissions. A remote
+  user's own identity/authorization for *what they're allowed to view or
+  control* is a separate, additional layer on top of this — the
+  transport-level connection itself never rides on end-user credentials.
+  This doesn't replace the dedicated security review still required
+  before production (attack surface, session hijacking risk, the
+  remote-user authorization layer itself) — it's the baseline that review
+  builds on.
 - Keep this tier's failure domain isolated from event sync — a monitoring
   outage must never affect recording durability or event delivery, and
   vice versa.
@@ -308,85 +310,9 @@ Every event carries, at minimum:
 
 ## 8. Open Questions & Risks
 
-These require a product or operational decision, not just an engineering
-one — flag back to the human rather than resolving silently. Checked boxes
-mark what has actually been decided; unchecked items (or unchecked
-sub-items) are still open and should not be resolved without asking.
-
-- [x] **1. Buffer cap sizing at the daemon.** Resolved: retention has a
-      floor and a configurable ceiling, not a single guessed number (see
-      §4.2). Minimum is until the nearest server acks receipt (never
-      discard unacknowledged data). Maximum defaults to unbounded except by
-      available local disk — store everything until the disk actually runs
-      out, rather than pre-guessing an outage duration — and is
-      configurable to a smaller explicit cap via `IOptions<T>` (see
-      `ARCHITECTURE.md` → Configuration). If local disk fills before the
-      server is reachable again, new local writes are rejected
-      (`Discard: New`) rather than evicting unacknowledged data.
-- [ ] **2. Leaf node reconnect-sync reliability.** There are known reports
-      of gaps in leaf-node mirror sync after extended disconnection. This
-      needs explicit integration testing against your actual outage
-      patterns before being trusted for correctness-critical data — do not
-      assume it "just works" from documentation alone.
-- **3. Server-tier retention/backup policy.**
-  - [x] Ownership split decided: backup/restore mechanics are ops-owned —
-        standard, transparent tooling per provider (see
-        `docs/07-operations-guide.md`). Development/design only owns
-        purge-safety: whether purging (not just backing up) old rows is
-        ever safe without breaking idempotent-apply or replay-ordering
-        guarantees.
-  - [x] Smart default established (healthcare/clinical-adjacent data,
-        common U.S. industry practice — see `docs/07-operations-guide.md`
-        → "Retention default"): 7 years for adult records; a longer,
-        distinct default for minors (age of majority + additional years).
-        Ships as an `IOptions<T>` default per `ARCHITECTURE.md` →
-        Configuration, not a hardcoded constant.
-  - [ ] Sign-off from a named compliance/legal owner on the exact figures
-        (both adult and minor) for the actual jurisdiction(s)/accreditation
-        requirements this deployment operates under, plus RPO/RTO targets,
-        is still open. A smart default is a starting point, not that
-        sign-off. **Out of scope for POC** — this is a pre-production
-        (Phase 6) gate, like Open Question 5.
-- **4. Full-mesh vs hub-and-spoke topology at scale.**
-  - [x] Policy decided (see §4.4): topology is fully flexible and
-        config-driven with **no architectural minimum or maximum** on
-        server/site/gateway count. Common patterns — full mesh within a
-        site with a limited designated gateway per site for cross-site
-        links, or full mesh extending all the way to cloud/remote sites —
-        are equally supported; neither forecloses the other.
-  - [x] Standalone (a single server, permanently, with no live peer
-        connections at all) is a first-class, valid deployment mode in its
-        own right — not a bootstrapping step toward a mesh. There is no
-        minimum node count. Any later reconciliation for such a site may
-        be offline/batch rather than a live gateway connection; this is
-        compatible with idempotent apply/HLC ordering without redesign
-        (see §4.4).
-  - [ ] Still open (**out of scope for POC** — a pre-production/Phase 6
-        concern): how many designated gateway servers per inter-site link
-        (one vs. a small redundant set for HA), and which pattern to
-        actually use for a real deployment — revisit once the number of
-        sites and their instability characteristics are known.
-  - [ ] The offline/batch sync mechanism itself, for a standalone site that
-        later needs to reconcile with others out-of-band, is undesigned —
-        a distinct future decision, not assumed to just be "NATS gateways,
-        later."
-- **5. Tunnel relay security model.**
-  - [x] Security baseline decided (see §4.5): TLS-secured, authenticating
-        with registered service credentials scoped to the daemon/server
-        instance — never end-user permissions. A remote user's own
-        authorization for what they're allowed to view/control is a
-        separate layer on top of this transport-level baseline.
-  - [x] Phase gating decided: the full review is a **pre-production
-        readiness gate (Phase 6)**, not a POC/prototype blocker — Phase 5's
-        tunnel implementation is explicitly out of scope for the review and
-        must not be treated as production-ready regardless.
-  - [ ] The full dedicated security review itself is still required before
-        production: attack surface, the remote-user authorization layer
-        itself, session hijacking risk, etc. This doc only covers the
-        architectural shape — the baseline above doesn't substitute for
-        that review.
-- [x] **6. WCF/legacy interop boundary.** Resolved: out of scope for this
-      project. If a specific external component ever needs WCF integration
-      with an older on-prem system, that's implemented within that
-      component — isolated behind an anti-corruption layer (see
-      `CLAUDE.md`) — not built into sync-mesh's core scope.
+Fully consolidated into [`PRODUCTION-HARDENING.md`](../PRODUCTION-HARDENING.md)
+(repo root) — buffer cap sizing (resolved), leaf-node reconnect-sync
+reliability, server-tier retention/backup policy, full-mesh vs.
+hub-and-spoke at scale, tunnel relay security model, and WCF/legacy
+interop (resolved) all live there now, alongside the rest of what a real
+production deployment of this PoC would still need.

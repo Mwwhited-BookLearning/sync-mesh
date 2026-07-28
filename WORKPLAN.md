@@ -24,13 +24,13 @@ tooling"). New feature work should add a companion doc under
 |---|---|---|
 | 0 — Project Setup | ✅ Done | [Data model](docs/06-data-model.md), [ADR-0001](docs/adr/0001-event-store-on-ef-core.md) |
 | 1 — Local Event Store (Daemon Side) | ✅ Done | [Data model](docs/06-data-model.md), [local-durability.md](docs/bdd/design/local-durability.md) (deferred — see notes; includes Event Recording Flow diagram), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md) |
-| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.md](docs/bdd/design/local-durability.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md), [Design doc §8](docs/00-design-document.md) (Open Questions 1 & 2 — both resolved) |
+| 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.md](docs/bdd/design/local-durability.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md), [PRODUCTION-HARDENING.md](PRODUCTION-HARDENING.md) (buffer cap sizing — resolved) |
 | 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md) (includes Server Mesh Reconciliation diagram) |
 | 4 — Passive Monitoring | ✅ Done | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) |
 | Ancillary — Mesh Monitor Dashboard | 🚧 In progress (backend only, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [c4-diagrams.md](docs/c4-diagrams.md), [ui-wireframes.md](docs/ui-wireframes.md) |
 | Ancillary — Event Lineage (Provenance) Schema | ✅ Done | [ADR-0006](docs/adr/0006-event-lineage-descriptive-provenance.md), [Data model §7](docs/06-data-model.md) |
-| 5 — Interactive Tunnel + Relay Fallback | ⬜ Not started | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security review) |
-| 6 — Hardening & Operational Readiness | ⬜ Not started | [Design doc §8](docs/00-design-document.md) (all Open Questions), `docs/adr/` (re-review as needed) |
+| 5 — Interactive Tunnel + Relay Fallback | ✅ Done | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [ADR-0007](docs/adr/0007-custom-reverse-tunnel-mechanism.md), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram) |
+| 6 — Production Hardening | 🚫 Out of scope for this PoC | [PRODUCTION-HARDENING.md](PRODUCTION-HARDENING.md) |
 
 ---
 
@@ -201,38 +201,92 @@ Note: a standalone (zero-peer) server is a fully valid, permanent deployment on 
 - [x] `remote-monitoring-tunnel.feature` passive-monitoring scenario passes — `SyncMesh.Bdd.Tests.StepDefinitions.{MonitorContext,MonitorSteps}`, a real daemon stack (JetStream setup + `MonitorPublisher`) against a real hub+leaf NATS pair, with a subscriber connected on the hub side standing in for "the remote user" — exactly where a real monitoring client would connect, proving the telemetry crosses the leaf boundary via ordinary NATS routing with zero separate infrastructure. The other 5 scenarios in this feature file (direct tunnel, relay fallback, TLS/service-credential auth, both cross-failure-isolation scenarios) are Phase 5/6 scope and remain correctly pending.
 - [x] Final full-solution `dotnet build` + `dotnet test` pass — 0 build errors, 0 test failures (2 EventStore.Tests.Sqlite, 2 Postgres, 2 SqlServer, 10 Daemon.Tests, 5 Sync.Tests, 26 Bdd.Tests [21 passed + 5 correctly skipped/pending Phase 5 tunnel scenarios]).
 
-## Phase 5 — Interactive Tunnel + Relay Fallback
+## Phase 5 — Interactive Tunnel + Relay Fallback ✅ Done
 
-**Related docs**: [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md) (see Amendment), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram), [Design doc §8](docs/00-design-document.md) (Open Question 5 — security baseline + phase gating decided, full review moved to Phase 6)
+**Related docs**: [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md) (see Amendment), [ADR-0007](docs/adr/0007-custom-reverse-tunnel-mechanism.md), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram)
 
-**Entry criteria:** Phase 2 complete. The full security review (Open Question 5) is **out of scope for this phase** — it's a Phase 6 pre-production gate, not a POC/prototype blocker. This phase ships against the security baseline already decided (TLS + registered service credentials), not the full review.
+**Entry criteria:** Phase 2 complete. ✅ This phase ships the tunnel
+*mechanism* only — a custom, plain-TCP, direct-first/relay-fallback
+reverse tunnel (ADR-0007). TLS + registered service credentials — the
+decided baseline (ADR-0004's Amendment) — are deferred wholesale to
+`PRODUCTION-HARDENING.md`, matching exactly how Phase 2/3 shipped the
+NATS leaf/gateway connections plaintext/unauthenticated by design.
 
-- [ ] Tunnel/relay tooling integrated as a mechanism separate from the NATS event mesh, TLS-secured, authenticating with a registered service credential (not end-user permissions) — remote-user authorization for what they can view/control is a separate layer on top
-- [ ] Direct-connection-first, relay-fallback logic on the client side
-- [ ] Explicit chaos-style tests: kill tunnel path, confirm event-sync unaffected, and vice versa
+- [x] Tunnel/relay mechanism integrated separately from the NATS event
+      mesh — plain TCP for this phase. `SyncMesh.Daemon.Tunnel.TunnelAgent`
+      (direct listener + outbound-only control connection to the relay,
+      same "daemon dials out" pattern as the NATS leaf node) and
+      `SyncMesh.ServerHost.Tunnel.TunnelRelay` (agent registry + client
+      pairing). Wire framing (`SyncMesh.Contracts.Tunnel.TunnelFraming`)
+      used only for control-connection signaling — the tunneled byte
+      stream itself is always raw and unframed, forwarded to a
+      configurable local target endpoint (protocol-agnostic, same approach
+      `frp`/`chisel` themselves use). One active session per daemon at a
+      time — a deliberate POC simplification (ADR-0007), not a hard
+      limit. `TunnelStatus` telemetry rides the already-reserved
+      `tunnel.<siteId>.<instanceId>.control` subject, current-state only,
+      same convention as `DaemonStatus`/`ServerStatus`. See ADR-0007 for
+      the full design and `PRODUCTION-HARDENING.md` for what's explicitly
+      deferred (TLS, service-credential auth, the full security review).
+- [x] Direct-connection-first, relay-fallback logic on the client side —
+      `SyncMesh.TunnelClient.TunnelConnector` (a new console project
+      mirroring `SyncMesh.MonitorClient`'s shape), shared (not
+      re-implemented) by `SyncMesh.Sync.Tests` and `SyncMesh.Bdd.Tests` via
+      a `ProjectReference`, so the fallback behavior under test is the
+      literal shipped code.
+- [x] Explicit chaos-style tests: kill tunnel path, confirm event-sync
+      unaffected, and vice versa — `SyncMesh.Sync.Tests.TunnelFailureIsolationTests`
+      (`TunnelKilled_EventSyncUnaffected`, `EventSyncKilled_TunnelUnaffected`),
+      real NATS hub+leaf containers alongside the real tunnel mechanism,
+      asserting actual byte-for-byte round-trips through a TCP echo
+      target, not just "a connection was established." Both directions
+      prove independence architecturally, not just by assertion: nothing
+      in `Daemon/Tunnel`/`ServerHost/Tunnel` references `NatsConnection`/
+      `NatsJSContext` or anything in `Daemon/Nats`/`ServerHost/Nats`, and
+      vice versa.
 
 **Exit criteria:**
-- [ ] `remote-monitoring-tunnel.feature` fully passes, including both cross-failure-isolation scenarios
-- [ ] No security-review sign-off required to exit this phase (that gate is in Phase 6) — but this phase's output must not be treated as production-ready regardless
+- [x] `remote-monitoring-tunnel.feature`'s 4 Phase-5-scope scenarios pass
+      (direct connection, relay fallback, both cross-failure-isolation
+      scenarios) via `SyncMesh.Bdd.Tests.StepDefinitions.{TunnelContext,TunnelSteps}`
+      — real `TunnelAgent`/`TunnelRelay`/echo target always, real NATS
+      hub+leaf added only for the two cross-failure scenarios. The
+      TLS/service-credential scenario remains correctly pending — see
+      `PRODUCTION-HARDENING.md`.
 
-## Phase 6 — Hardening & Operational Readiness
+Final full-solution `dotnet build` + `dotnet test` pass — 0 build errors,
+0 test failures (2 EventStore.Tests.Sqlite, 2 Postgres, 2 SqlServer, 10
+Daemon.Tests, 7 Sync.Tests [5 existing + 2 new
+`TunnelFailureIsolationTests`], 26 Bdd.Tests [25 passed + 1 correctly
+skipped/pending Phase 6 TLS/service-credential scenario]).
 
-**Related docs**: [Design doc §8](docs/00-design-document.md) (all Open Questions), `docs/adr/` (re-review as needed)
+**Bugs found and fixed along the way** (see `ARCHITECTURE.md` for
+details):
+1. `TunnelAgent`'s direct listener and `TunnelRelay`'s both listeners
+   originally bound `IPAddress.Any` (IPv4-only). A remote client
+   connecting to `"localhost"` can resolve to `::1` first on some
+   machines/environments, producing a fast, spurious "direct connection
+   failed" that incorrectly triggered relay fallback in the "direct
+   connection succeeds" BDD scenario. Fixed by binding all three
+   listeners (and the test suites' TCP echo target) dual-stack
+   (`TunnelSockets.CreateDualStackListener`), independent of address-
+   family resolution order.
+2. Three step-definition texts used a literal `/` inside step text
+   ("firewall/NAT", "tunnel/relay", "tunnel/monitoring") — the same
+   Cucumber Expressions "`/` means alternative text" trap already
+   documented from Phase 3 (see `ARCHITECTURE.md`), left three of the four
+   new tunnel scenarios silently unbound (reporting as Skipped) until the
+   slashes were escaped (`firewall\/NAT`, etc.).
 
-**Entry criteria:** Phases 1–5 functionally complete. This is the
-pre-production-readiness phase — nothing here is required for a POC.
+## Phase 6 — Production Hardening (out of scope for this PoC)
 
-- [x] ~~Buffer cap sizing~~ (Open Question 1) — resolved: floor is "until server acks," ceiling defaults to disk-bound, configurable smaller
-- [ ] Server-tier retention/backup policy defined (Open Question 3 — see
-      `docs/07-operations-guide.md` for the ops-owned/dev-owned split)
-- [ ] Full mesh validated/decided default-vs-opt-in given actual site count and instability characteristics (Open Question 4) — standalone and intra-site full mesh already work by this point
-- [ ] Load/chaos test leaf-node reconnect behavior under realistic outage durations/volumes (Open Question 2)
-- [ ] Wire up TLS + registered service credentials for NATS leaf/gateway connections and the tunnel path (ADR-0002/ADR-0004 security baseline) — Phase 2/5 shipped plaintext/unauthenticated by design; this is where that gets closed
-- [ ] Complete the dedicated tunnel/relay security review (Open Question 5) and obtain sign-off — required before any production deployment, not before this phase's own completion in a non-production context
-- [x] ~~WCF/legacy interop scope~~ (Open Question 6) — resolved: out of scope for this project
-
-**Exit criteria:**
-- [ ] All Open Questions in `docs/00-design-document.md` §8 are resolved and documented, or explicitly accepted as ongoing risks with a named owner and review date
+This repo is a PoC/teaching example, not a path to production — nothing
+in this phase is expected to actually be built here. See
+[`PRODUCTION-HARDENING.md`](PRODUCTION-HARDENING.md) for the full,
+consolidated list of what a real deployment would still need (TLS +
+service-credential wiring, the tunnel security review, retention/
+compliance sign-off, realistic-scale chaos/load testing, the real-world
+gateway-count decision, and offline/batch reconciliation design).
 
 ## Ancillary Work
 
@@ -264,76 +318,9 @@ complete — see `docs/06-data-model.md` §7 for the full shape.
 
 ## Open questions carried from the design doc
 
-Mirrors `docs/00-design-document.md` §8 — flagged, not silently decided, per
-`CLAUDE.md`. Checked = actually decided; unchecked = still needs a
-product/ops decision, don't resolve it here.
-
-- [x] **1. Buffer cap sizing at the daemon.** Resolved: floor is "never
-      discard before the server acks it" (WorkQueue retention); ceiling
-      defaults to unbounded except by available local disk, configurable
-      to a smaller explicit `MaxBytes`/`MaxAge`/`MaxMsgs` via `IOptions<T>`
-      (`ARCHITECTURE.md` → Configuration). Disk-exhaustion behavior is
-      reject-new-writes, not evict-unacked-data. See design doc §4.2.
-- **2. Leaf node reconnect-sync reliability.**
-  - [x] Phase 2 exit criteria — an explicit extended-disconnect/reconnect
-        test exists and passes (`SyncMesh.Sync.Tests`, see above).
-  - [ ] Phase 6 requires load/chaos testing under realistic outage
-        durations/volumes, beyond this single-scenario proof. Reconnect/
-        backoff settings will also be `IOptions<T>`-bound with a smart
-        default.
-- **3. Server-tier retention/backup policy** (Phase 6).
-  - [x] Ownership split decided — see
-        [`docs/07-operations-guide.md`](docs/07-operations-guide.md):
-        backup/restore mechanics are ops-owned; only purge-safety
-        (idempotent-apply/replay-ordering) is dev-owned.
-  - [x] Smart default established (healthcare/clinical-adjacent data): 7
-        years for adult records, a longer distinct default for minors (age
-        of majority + additional years) — see
-        [`docs/07-operations-guide.md`](docs/07-operations-guide.md) →
-        "Retention default". `IOptions<T>`-bound per `ARCHITECTURE.md`.
-  - [ ] Compliance/legal sign-off on the exact figures for the actual
-        jurisdiction(s)/accreditation this deployment operates under, plus
-        RPO/RTO targets — still open; the smart default isn't that
-        sign-off. **Out of scope for POC** — a Phase 6 pre-release gate,
-        like Open Question 5.
-- **4. Full-mesh vs. hub-and-spoke topology at scale** (Phase 6).
-  - [x] Policy decided — topology is fully flexible and config-driven, no
-        architectural minimum or maximum on server/site/gateway count.
-        Common patterns: full mesh **within** a site, with a limited
-        designated gateway per site for **cross-site** links — but full
-        mesh extending to cloud/remote sites directly is equally valid, and
-        no on-prem tier is required at all (a daemon can connect straight
-        to a cloud server). None of these are mutually exclusive or
-        privileged. Every server everywhere still converges to the same
-        fully-replicated history regardless of which pattern is used. See
-        `docs/08-deployment-models.md` for diagrams.
-  - [x] Standalone (a single server, permanently, zero live peer
-        connections, no minimum node count) — including a daemon with no
-        nearest server at all ("client isolated") — is a first-class
-        deployment mode in its own right, not a bootstrapping step toward a
-        mesh. Later reconciliation may be offline/batch rather than a live
-        gateway — compatible with idempotent apply/HLC ordering without
-        redesign.
-  - [ ] How many designated gateway servers per inter-site link (one vs. a
-        small redundant set for HA), and which pattern to actually use for
-        a real deployment — still open, revisit once site count/
-        instability is known. **Out of scope for POC** — a Phase 6
-        pre-release gate.
-  - [ ] The offline/batch sync mechanism itself for a standalone site —
-        undesigned, a distinct future decision.
-- **5. Tunnel relay security model.**
-  - [x] Security baseline decided — TLS-secured, authenticating with
-        registered service credentials scoped to the daemon/server
-        instance, never end-user permissions (same as the event mesh; see
-        `docs/adr/0002-nats-leaf-nodes-for-transport.md` Amendment and
-        `docs/adr/0004-separate-tunnel-from-event-mesh.md` Amendment).
-  - [x] Phase gating decided: the full review is a **Phase 6
-        pre-production readiness gate**, not a POC/prototype blocker for
-        Phase 5.
-  - [ ] Full dedicated security review itself still required before
-        production: attack surface, the remote-user authorization layer on
-        top of the baseline above, session hijacking risk, etc.
-- [x] **6. WCF/legacy interop boundary scope** — resolved: out of scope for
-      this project. Any future external component needing WCF integration
-      implements it within that component (anti-corruption layer), not in
-      sync-mesh.
+Fully consolidated into [`PRODUCTION-HARDENING.md`](PRODUCTION-HARDENING.md)
+— buffer cap sizing (resolved), leaf-node reconnect-sync reliability,
+server-tier retention/backup policy, full-mesh vs. hub-and-spoke at
+scale, tunnel relay security model, and WCF/legacy interop (resolved) all
+live there now instead of being duplicated in both `docs/00-design-document.md`
+§8 and here.

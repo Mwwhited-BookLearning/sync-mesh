@@ -6,6 +6,7 @@ using SyncMesh.Contracts;
 using SyncMesh.Daemon;
 using SyncMesh.Daemon.Ipc;
 using SyncMesh.Daemon.Nats;
+using SyncMesh.Daemon.Tunnel;
 using SyncMesh.EventStore;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -27,6 +28,12 @@ builder.Services
 builder.Services
     .AddOptions<DaemonMonitorOptions>()
     .Bind(builder.Configuration.GetSection(DaemonMonitorOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<TunnelAgentOptions>()
+    .Bind(builder.Configuration.GetSection(TunnelAgentOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
@@ -65,6 +72,16 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<EventForwarder>())
 // sync path above: its own subject namespace, no JetStream, no shared
 // failure domain. See docs/00-design-document.md §4.5.
 builder.Services.AddHostedService<MonitorPublisher>();
+
+// Interactive tunnel (Tier X) — a separate mechanism from the event mesh
+// and from passive monitoring, plain TCP for this phase (TLS/service-
+// credential auth deferred, see PRODUCTION-HARDENING.md). Registered as
+// its own singleton (like EventForwarder above) so TunnelStatusPublisher
+// can read its live ConnectedToRelay/SessionActive state. See
+// docs/adr/0007-custom-reverse-tunnel-mechanism.md.
+builder.Services.AddSingleton<TunnelAgent>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TunnelAgent>());
+builder.Services.AddHostedService<TunnelStatusPublisher>();
 
 var host = builder.Build();
 

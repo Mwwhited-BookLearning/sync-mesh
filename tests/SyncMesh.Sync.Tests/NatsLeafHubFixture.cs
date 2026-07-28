@@ -81,7 +81,10 @@ public sealed class NatsLeafHubFixture : IAsyncLifetime
         await _leaf.StartAsync();
     }
 
-    private static int GetFreeTcpPort()
+    // Internal (not private) so other fixtures in this test project — e.g.
+    // TunnelFailureIsolationTests, which needs several free ports for its
+    // combined NATS + tunnel harness — can reuse it without duplicating it.
+    internal static int GetFreeTcpPort()
     {
         var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
         listener.Start();

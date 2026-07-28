@@ -83,15 +83,18 @@ tradeoff explicitly to the human first.
   application. Only pull something into development/design scope when it
   genuinely can't be externally isolated — e.g. the app's own correctness
   guarantees (idempotent apply, replay ordering) depend on it.
-- **Ops/compliance sign-off questions are out of scope for POC work.**
-  Phase 6 (`docs/05-implementation-guide.md`) is the pre-production-
-  readiness gate — things like the tunnel security review, retention
-  compliance sign-off, and real-scale topology decisions live there, not
-  earlier phases. A POC ships against the smart defaults and security
-  *baseline* already decided (see `ARCHITECTURE.md`), not against a
-  completed ops sign-off. Don't block earlier-phase work waiting on these,
-  and don't let a Phase 6 gate quietly creep into an earlier phase's exit
-  criteria.
+- **This project is a PoC/teaching example of meshed event sourcing +
+  CQRS — not a path to a real production deployment.** Ops/compliance
+  sign-off questions, TLS/service-credential wiring, the tunnel security
+  review, retention compliance sign-off, and real-scale topology
+  decisions are all consolidated in one place —
+  [`PRODUCTION-HARDENING.md`](PRODUCTION-HARDENING.md) at the repo root —
+  rather than scattered per-phase or gated behind a "Phase 6" that's
+  never actually expected to be built here. A POC ships against the smart
+  defaults and security *baseline* already decided (see `ARCHITECTURE.md`),
+  not against a completed ops sign-off. Don't block phase work waiting on
+  anything tracked in that file, and don't let its concerns quietly creep
+  back into a phase's exit criteria.
 - **Configuration**: any tunable value (buffer caps, timeouts, retention,
   reconnect/backoff settings, subject prefixes, etc.) must be configurable
   via the `Microsoft.Extensions.Options` pattern — bind a POCO options class

@@ -65,9 +65,20 @@ see `docs/adr/0002-nats-leaf-nodes-for-transport.md` Amendment). A remote
 user's own authorization for what they're allowed to view/control is a
 separate layer on top of this transport-level baseline, and is still part
 of what the dedicated security review must cover — this amendment doesn't
-close that Follow-up, it gives the review a starting baseline.
+close that Follow-up, it gives the review a starting baseline. See
+`PRODUCTION-HARDENING.md` at the repo root for that review's status and
+everything else deferred wholesale out of this PoC's scope.
+
+## Amendment (Phase 5) — concrete tunnel mechanism chosen
+
+See `docs/adr/0007-custom-reverse-tunnel-mechanism.md` for the concrete
+mechanism Phase 5 implements against this ADR's constraints (custom
+plain-TCP reverse tunnel, direct-first/relay-fallback, one active session
+per daemon). TLS + service-credential auth remain deferred wholesale to
+`PRODUCTION-HARDENING.md`, not implemented as part of choosing the
+mechanism itself.
 
 ## Related
 
-`docs/00-design-document.md` §4.5, Open Question 5,
+`docs/00-design-document.md` §4.5, `PRODUCTION-HARDENING.md`,
 `docs/adr/0002-nats-leaf-nodes-for-transport.md`

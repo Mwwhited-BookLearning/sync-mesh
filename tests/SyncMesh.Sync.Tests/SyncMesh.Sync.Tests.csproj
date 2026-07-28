@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\src\SyncMesh.EventStore.Migrations.Sqlite\SyncMesh.EventStore.Migrations.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\SyncMesh.Daemon\SyncMesh.Daemon.csproj" />
     <ProjectReference Include="..\..\src\SyncMesh.ServerHost\SyncMesh.ServerHost.csproj" />
+    <ProjectReference Include="..\..\src\SyncMesh.TunnelClient\SyncMesh.TunnelClient.csproj" />
   </ItemGroup>
 
 </Project>

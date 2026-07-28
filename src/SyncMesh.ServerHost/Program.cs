@@ -4,6 +4,7 @@ using NATS.Client.Core;
 using NATS.Client.JetStream;
 using SyncMesh.EventStore;
 using SyncMesh.ServerHost.Nats;
+using SyncMesh.ServerHost.Tunnel;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -47,6 +48,12 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services
+    .AddOptions<TunnelRelayOptions>()
+    .Bind(builder.Configuration.GetSection(TunnelRelayOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 // One NATS connection per server process, to its own local cluster — never
 // a shared connection into a peer's cluster (see docs/adr/0002-nats-leaf-
 // nodes-for-transport.md's 2026-07-23 (Phase 3) Amendment: MeshForwarder
@@ -73,6 +80,12 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<MeshForwarder>());
 // Passive monitoring (Tier X) — architecturally separate from the
 // event-sync path above. See docs/00-design-document.md §4.5.
 builder.Services.AddHostedService<ServerMonitorPublisher>();
+
+// Interactive tunnel (Tier X) — a separate mechanism from the event mesh
+// and from passive monitoring, plain TCP for this phase (TLS/service-
+// credential auth deferred, see PRODUCTION-HARDENING.md). See
+// docs/adr/0007-custom-reverse-tunnel-mechanism.md.
+builder.Services.AddHostedService<TunnelRelay>();
 
 var host = builder.Build();
 

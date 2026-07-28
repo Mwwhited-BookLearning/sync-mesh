@@ -169,37 +169,131 @@ don't let it go stale.
   bites ad hoc manual verification against a directly-run container —
   prefer `localhost` over `127.0.0.1` when doing that in this environment.
 
-<<<<<<< HEAD
-## Mesh monitor dashboard (ops tooling, not yet phase-tracked)
+## Interactive tunnel + relay (Phase 5)
 
-See `docs/adr/0005-mesh-monitor-dashboard.md` and design doc §4.6 for what
-this is and why it's separate from per-instance remote monitoring (§4.5).
-Conventions specific to `SyncMesh.MeshMonitor.Api`:
+See `docs/adr/0007-custom-reverse-tunnel-mechanism.md` for the full
+design. Conventions specific to `SyncMesh.Daemon.Tunnel`/
+`SyncMesh.ServerHost.Tunnel`:
 
-- **In-memory topology store, no durability, by design** —
-  `ITopologyStore` is a `ConcurrentDictionary` keyed by `siteId:instanceId`;
-  a dashboard restart just re-learns the topology from the next round of
-  `monitor.*` ticks, the same "nothing to replay" reasoning Phase 4's
-  telemetry itself already relies on.
-- **SignalR is push-only.** `MeshMonitorHub` has no client-callable
-  methods — the browser only listens for `NodeUpdated`; the REST snapshot
-  endpoint (`GET /api/topology`) covers a freshly opened tab's first paint,
-  SignalR covers everything after.
+- **Outbound-only control/data connections — no inbound firewall rule
+  needed, same as the NATS leaf node (ADR-0002).** `TunnelAgent` always
+  dials its relay; the relay never dials a daemon. The direct listener is
+  the one exception (a remote client dials in directly when network
+  topology allows it), which is exactly the "fast path" the mechanism is
+  built to try first.
+- **Wire framing is signaling-only; the tunneled byte stream is always
+  raw and unframed.** `SyncMesh.Contracts.Tunnel.TunnelFraming`'s 5-byte
+  header frames (`Hello`/`Heartbeat`/`OpenDataChannel`/`DataChannelHello`/
+  `ClientHello`) exist only on control connections and the handshake byte
+  of a new data/client connection — once a session is spliced, both ends
+  just `CopyToAsync` raw bytes to `LocalTargetEndpoint`. This is what
+  keeps the mechanism protocol-agnostic (works identically for RDP/VNC/
+  raw TCP/anything else per design doc §4.5).
+- **One active session per daemon, gated on both sides.** A
+  `SemaphoreSlim(1,1)` on the agent (covers both the direct listener and
+  data-channel requests) and a per-agent semaphore on the relay (checked
+  *before* ever asking the agent to open a data channel, so a busy agent
+  never even sees a second request) — a deliberate POC simplification
+  (ADR-0007), not a hard design limit.
 - **Same outer-retry-loop convention as `EventForwarder`/`MeshForwarder`.**
-  `MonitorSubscriber`'s NATS subscribe loop must not silently die on a
-  fault — same bug class already fixed once in `EventForwarder` (see
-  Daemon → server forwarding above); it was applied here from the start
-  rather than rediscovered.
-- **Dev-only CORS.** The `DevCors` policy (allowing `localhost:5173`,
-  Vite's dev server origin) only applies in `IsDevelopment()` — the
-  built/production path expects the SPA served same-origin from
-  `wwwroot`, no CORS needed. That frontend does not exist yet (see
-  ADR-0005), so today only the Development CORS path is actually
-  reachable.
-- **No authentication yet.** Unlike every other cross-instance connection
-  in this project, `/api/topology` and the SignalR hub currently have no
-  auth — this is a known gap (ADR-0005 Consequences/Follow-up), not an
-  intentional exception to the TLS + service-credential baseline below.
+  Both `TunnelAgent`'s two loops (direct listener, control connection) and
+  `TunnelRelay`'s two loops (agent listener, client listener) restart on
+  fault after a fixed 2s delay rather than letting `ExecuteAsync` exit —
+  the same "a background consume loop must not die silently" lesson
+  applied to a fourth mechanism now.
+- **`TunnelStatus` telemetry rides the already-reserved
+  `tunnel.<siteId>.<instanceId>.control` subject as pure current-state
+  telemetry**, structurally identical to `DaemonStatus`/`ServerStatus`
+  (`TunnelStatusPublisher`, same `PeriodicTimer` + plain core-NATS publish
+  pattern as `MonitorPublisher`) — despite the "control" name, no real
+  session-establishment signaling ever rides on NATS; that all lives
+  inside the plain-TCP mechanism.
+- **Zero reference to `NatsConnection`/`NatsJSContext` anywhere in either
+  `Tunnel/` folder, and vice versa in `Nats/`.** This is what makes the
+  tunnel's failure domain independent of event-sync *architecturally*, not
+  just by assertion — proven directly by
+  `SyncMesh.Sync.Tests.TunnelFailureIsolationTests`, which kills each
+  mechanism in turn and exercises the other against real infrastructure.
+- **Dual-stack (IPv4 + IPv6) listeners, not `IPAddress.Any`.** All three
+  TCP listeners (`TunnelAgent`'s direct listener, `TunnelRelay`'s agent
+  and client listeners) — plus the test suites' TCP echo target — bind via
+  `SyncMesh.Contracts.Tunnel.TunnelSockets.CreateDualStackListener`.
+  Binding `IPAddress.Any` (IPv4-only) let `"localhost"` resolving to `::1`
+  first produce a fast, spurious connection failure on some
+  machines/environments — this surfaced as the "direct connection
+  succeeds" BDD scenario incorrectly falling back to relay every time,
+  not a hang, so it was easy to misattribute to the fallback logic itself
+  rather than the listener's address family.
+- **TLS + service-credential authentication are explicitly not
+  implemented this phase** — see `PRODUCTION-HARDENING.md`. `TunnelAgent`/
+  `TunnelRelay` accept any connection that speaks the wire framing
+  correctly; nothing about identity or transport encryption is checked.
+- **No new shared mechanism project.** Mirrors the `EventForwarder`/
+  `ApplyResponder` precedent — mechanism code lives directly in the
+  existing `SyncMesh.Daemon`/`SyncMesh.ServerHost` host projects (in a new
+  `Tunnel/` sibling to each project's `Nats/` folder); only the wire
+  framing and `TunnelStatus` contract are genuinely shared, and those
+  already belong in `SyncMesh.Contracts` alongside `EventEnvelope`.
+- **`SyncMesh.TunnelClient.TunnelConnector` (the direct-first/relay-
+  fallback logic) is referenced, not re-implemented, by the test
+  suites.** `SyncMesh.Sync.Tests` and `SyncMesh.Bdd.Tests` both take a
+  `ProjectReference` to `SyncMesh.TunnelClient`, so the fallback behavior
+  under test is the literal shipped code — a deliberate improvement over
+  `MonitorContext`'s precedent of re-implementing `MonitorClient`'s
+  subscribe logic inline.
+
+## Mesh-wide monitoring dashboard and deployment-model sandbox (developer tooling)
+
+Two additions that aren't part of the phased implementation guide
+(`docs/05-implementation-guide.md`) — pure developer/operator tooling
+built on top of the Phase 4 telemetry mechanism and the topology shapes in
+`docs/08-deployment-models.md`. See `docs/adr/0005-mesh-monitor-dashboard.md`
+and design doc §4.6 for what the dashboard is and why it's separate from
+per-instance remote monitoring (§4.5).
+
+- **`src/SyncMesh.MeshMonitor.Api`** (ASP.NET Core + SignalR) subscribes to
+  `monitor.>` and serves both a REST snapshot (`GET /api/topology`) and a
+  live push (`MeshMonitorHub`) to **`web/mesh-monitor`**, a Vue 3 +
+  Element Plus + vis-network dashboard — see `UI-ARCHITECTURE.md` for the
+  frontend's own conventions (component file split, MVVM translation,
+  testing). `ServerStatus`/`DaemonStatus` (`SyncMesh.Contracts`) self-
+  describe each node's own configured connections and per-connection
+  event counts, so the whole topology is derived from what every node
+  already reports about itself — no separate topology config to maintain.
+  Backend-specific conventions:
+  - **In-memory topology store, no durability, by design** —
+    `ITopologyStore` is a `ConcurrentDictionary` keyed by `siteId:instanceId`;
+    a dashboard restart just re-learns the topology from the next round of
+    `monitor.*` ticks, the same "nothing to replay" reasoning Phase 4's
+    telemetry itself already relies on.
+  - **SignalR is push-only.** `MeshMonitorHub` has no client-callable
+    methods — the browser only listens for `NodeUpdated`; the REST snapshot
+    endpoint (`GET /api/topology`) covers a freshly opened tab's first paint,
+    SignalR covers everything after.
+  - **Same outer-retry-loop convention as `EventForwarder`/`MeshForwarder`.**
+    `MonitorSubscriber`'s NATS subscribe loop must not silently die on a
+    fault — same bug class already fixed once in `EventForwarder` (see
+    Daemon → server forwarding above); it was applied here from the start
+    rather than rediscovered.
+  - **Dev-only CORS.** The `DevCors` policy (allowing `localhost:5173`,
+    Vite's dev server origin) only applies in `IsDevelopment()` — the
+    built/production path serves the SPA same-origin from `wwwroot`
+    (populated automatically on `dotnet build`, not just `publish` — see
+    `UI-ARCHITECTURE.md`), no CORS needed there.
+  - **No authentication yet.** Unlike every other cross-instance
+    connection in this project, `/api/topology` and the SignalR hub
+    currently have no auth — tracked in `PRODUCTION-HARDENING.md`, not an
+    intentional exception to the TLS + service-credential baseline below.
+- **`docker-compose.yml` (repo root) + `Properties/launchSettings.json`
+  profiles** on `SyncMesh.Daemon`/`SyncMesh.ServerHost` let any of the six
+  documented deployment models be stood up by hand for manual
+  observation — see `docs/10-running-deployment-models.md`. Mesh-model
+  nodes (intra-site-mesh, full-mesh) each get their own Postgres database
+  (not a shared one) specifically so convergence is genuinely proven
+  across independently-stored history, consistent with `ServerHost`
+  remaining Postgres/SqlServer-only at the server tier (no SQLite carve-
+  out was added for this sandbox — provisioning one database per node was
+  the correct fix, not loosening that convention).
 
 ## Event lineage (provenance)
 
@@ -232,34 +326,6 @@ data model `docs/06-data-model.md` §7.
   the abandoned attempt's tracked entities dangle into the next one. Only
   detaching `record` (as the original pre-lineage code did) would leave
   stale tracked `EventLineage` instances behind.
-=======
-## Mesh-wide monitoring dashboard and deployment-model sandbox (developer tooling)
-
-Two additions that aren't part of the phased implementation guide
-(`docs/05-implementation-guide.md`) — pure developer/operator tooling
-built on top of the Phase 4 telemetry mechanism and the topology shapes in
-`docs/08-deployment-models.md`:
-
-- **`src/SyncMesh.MeshMonitor.Api`** (ASP.NET Core + SignalR) subscribes to
-  `monitor.>` and serves both a REST snapshot (`GET /api/topology`) and a
-  live push (`MeshMonitorHub`) to **`web/mesh-monitor`**, a Vue 3 +
-  Element Plus + vis-network dashboard — see `UI-ARCHITECTURE.md` for the
-  frontend's own conventions (component file split, MVVM translation,
-  testing). `ServerStatus`/`DaemonStatus` (`SyncMesh.Contracts`) self-
-  describe each node's own configured connections and per-connection
-  event counts, so the whole topology is derived from what every node
-  already reports about itself — no separate topology config to maintain.
-- **`docker-compose.yml` (repo root) + `Properties/launchSettings.json`
-  profiles** on `SyncMesh.Daemon`/`SyncMesh.ServerHost` let any of the six
-  documented deployment models be stood up by hand for manual
-  observation — see `docs/10-running-deployment-models.md`. Mesh-model
-  nodes (intra-site-mesh, full-mesh) each get their own Postgres database
-  (not a shared one) specifically so convergence is genuinely proven
-  across independently-stored history, consistent with `ServerHost`
-  remaining Postgres/SqlServer-only at the server tier (no SQLite carve-
-  out was added for this sandbox — provisioning one database per node was
-  the correct fix, not loosening that convention).
->>>>>>> 94614e7127a36d20afab1bdd780c3685e79490dd
 
 ## Configuration
 
@@ -364,15 +430,13 @@ e.g. purge/retention interacting with idempotent-apply dedupe). See that
 doc's worked example for server-tier retention/backup (design doc Open
 Question 3).
 
-**Ops/legal/compliance sign-off is a pre-release (Phase 6) concern, out of
-scope for POC.** The tunnel security review, retention compliance sign-off,
-and real-scale topology decisions all gate production readiness — they
-don't gate a POC or earlier implementation phases. A POC ships against the
-smart defaults and security baseline already decided in this document, not
-a completed sign-off. When adding a new open question of this shape,
-default it the same way: decide the mechanism/baseline now, defer the
-sign-off to Phase 6, and say so explicitly rather than leaving it
-ambiguous which phase actually gates it.
+**Ops/legal/compliance sign-off is out of scope for this PoC entirely** —
+see [`PRODUCTION-HARDENING.md`](PRODUCTION-HARDENING.md) for the
+consolidated list of what a real deployment would still need
+(tunnel security review, retention compliance sign-off, real-scale
+topology decisions, TLS/credential wiring). A POC ships against the smart
+defaults and security baseline already decided in this document, not a
+completed sign-off.
 
 ## Testing
 
