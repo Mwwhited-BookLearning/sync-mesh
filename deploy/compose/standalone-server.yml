@@ -1,0 +1,23 @@
+# Deployment model 4: Standalone server (zero peers) — see
+# docs/08-deployment-models.md and docs/10-running-deployment-models.md.
+# Standalone use: `docker compose -f deploy/compose/standalone-server.yml up -d`.
+# Also pulled into the repo-root docker-compose.yml (all six models at once)
+# via `include:`.
+name: sync-mesh-standalone-server
+
+services:
+  postgres-standalone:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25434:5432"
+
+  nats-standalone-server:
+    image: nats:2-alpine
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-standalone-server"]
+    volumes:
+      - ../nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24227:4222"

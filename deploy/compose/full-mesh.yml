@@ -1,0 +1,55 @@
+# Deployment model 6: Full mesh everywhere (3-node, every node peers with
+# every other). See docs/08-deployment-models.md and
+# docs/10-running-deployment-models.md. Standalone use:
+# `docker compose -f deploy/compose/full-mesh.yml up -d`. Also pulled into
+# the repo-root docker-compose.yml (all six models at once) via `include:`.
+name: sync-mesh-full-mesh
+
+services:
+  postgres-full-a:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25438:5432"
+
+  postgres-full-b:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25439:5432"
+
+  postgres-full-c:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25440:5432"
+
+  nats-full-a:
+    image: nats:2-alpine
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-full-a"]
+    volumes:
+      - ../nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24231:4222"
+
+  nats-full-b:
+    image: nats:2-alpine
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-full-b"]
+    volumes:
+      - ../nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24232:4222"
+
+  nats-full-c:
+    image: nats:2-alpine
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-full-c"]
+    volumes:
+      - ../nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24233:4222"

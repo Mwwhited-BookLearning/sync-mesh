@@ -1,0 +1,33 @@
+# Deployment model 2: Client -> on-prem server — see
+# docs/08-deployment-models.md and docs/10-running-deployment-models.md.
+# Standalone use: `docker compose -f deploy/compose/client-onprem.yml up -d`.
+# Also pulled into the repo-root docker-compose.yml (all six models at once)
+# via `include:`.
+name: sync-mesh-client-onprem
+
+services:
+  postgres-onprem:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25432:5432"
+
+  nats-hub-onprem:
+    image: nats:2-alpine
+    volumes:
+      - ../nats-config/onprem-hub.conf:/etc/nats/nats-server.conf:ro
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    ports:
+      - "24223:4222"
+
+  nats-leaf-onprem:
+    image: nats:2-alpine
+    volumes:
+      - ../nats-config/onprem-leaf.conf:/etc/nats/nats-server.conf:ro
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    depends_on:
+      - nats-hub-onprem
+    ports:
+      - "24224:4222"

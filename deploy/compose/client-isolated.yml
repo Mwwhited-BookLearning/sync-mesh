@@ -1,0 +1,15 @@
+# Deployment model 1: Client isolated (no nearest server) — see
+# docs/08-deployment-models.md and docs/10-running-deployment-models.md.
+# Standalone use: `docker compose -f deploy/compose/client-isolated.yml up -d`.
+# Also pulled into the repo-root docker-compose.yml (all six models at once)
+# via `include:`.
+name: sync-mesh-client-isolated
+
+services:
+  nats-client-isolated:
+    image: nats:2-alpine
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-client-isolated"]
+    volumes:
+      - ../nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24222:4222"

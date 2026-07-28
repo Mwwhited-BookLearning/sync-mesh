@@ -1,0 +1,61 @@
+# Deployment model 5: Intra-site full mesh, inter-site limited gateway
+# (3-node A-B-C; B is the designated gateway — see ServerHost launch
+# profiles). See docs/08-deployment-models.md and
+# docs/10-running-deployment-models.md. Standalone use:
+# `docker compose -f deploy/compose/intra-site-mesh.yml up -d`. Also
+# pulled into the repo-root docker-compose.yml (all six models at once)
+# via `include:`.
+#
+# Each node gets its own database — the whole point is proving genuine
+# convergence across independently-stored history, not a shared table
+# that would make convergence trivially true.
+name: sync-mesh-intra-site-mesh
+
+services:
+  postgres-mesh-a:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25435:5432"
+
+  postgres-mesh-b:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25436:5432"
+
+  postgres-mesh-c:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: EventStore
+    ports:
+      - "25437:5432"
+
+  nats-mesh-a:
+    image: nats:2-alpine
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-mesh-a"]
+    volumes:
+      - ../nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24228:4222"
+
+  nats-mesh-b:
+    image: nats:2-alpine
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-mesh-b"]
+    volumes:
+      - ../nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24229:4222"
+
+  nats-mesh-c:
+    image: nats:2-alpine
+    command: ["-c", "/etc/nats/nats-server.conf", "--name", "nats-mesh-c"]
+    volumes:
+      - ../nats-config/plain-jetstream.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "24230:4222"
