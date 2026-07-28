@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Status | Proposed |
+| Status | Accepted (see Amendment) |
 | Date | 2026-07-27 |
-| Deciders | Architecture (human confirmation still needed — see Open Question below) |
+| Deciders | Architecture |
 
 ## Context
 
@@ -98,9 +98,37 @@ Consequences).
   5. Reconcile this work into `WORKPLAN.md` as a tracked item rather than
      leaving it outside the phase plan (done alongside this ADR).
 
+## Amendment (2026-07-27) — bespoke dashboard confirmed, frontend built
+
+The off-the-shelf-tooling question in Considered Alternatives is now
+resolved: **confirmed with the human — keep the bespoke dashboard**, not a
+Grafana/exporter swap. The frontend (`web/mesh-monitor`, Vue 3 + Element
+Plus + vis-network topology graph + Pinia-as-ViewModel) has since been
+built, with 10 Vitest unit tests + 1 Playwright e2e smoke test, all
+passing, and is served from `SyncMesh.MeshMonitor.Api`'s own `wwwroot`
+(populated automatically on `dotnet build`, not just `publish` — see
+`UI-ARCHITECTURE.md`). Status moves from Proposed to Accepted on that
+basis — this ADR's core mechanism (in-memory topology store, SignalR
+push, REST snapshot, telemetry-only, no new subjects) stands as built,
+not just as designed.
+
+**Still open, unaffected by this amendment** (Follow-up items 3–4 from
+the original Consequences remain outstanding, not resolved by building
+the frontend):
+- No authentication on `/api/topology` or the SignalR hub.
+- No backend test project for `SyncMesh.MeshMonitor.Api` (the frontend
+  now has its own Vitest/Playwright coverage; the ASP.NET Core backend —
+  `TopologyStore`, `MonitorSubscriber` — still has none).
+- No BDD feature file exists for this.
+- Not yet visually confirmed live in a running Aspire dashboard in this
+  sandbox (a DCP/Postgres-dependent-resource quirk, not specific to this
+  resource — see `ARCHITECTURE.md`'s "known environment limitation" note).
+
 ## Related
 
 `docs/00-design-document.md` §4.5, `docs/adr/0004-separate-tunnel-from-event-mesh.md`,
 `docs/c4-diagrams.md` (Container diagram update + new Component diagram),
-`docs/ui-wireframes.md` (new), `WORKPLAN.md` → "Mesh Monitor Dashboard",
-`ARCHITECTURE.md` → "Mesh monitor dashboard"
+`docs/ui-wireframes.md`, `UI-ARCHITECTURE.md` (frontend conventions),
+`WORKPLAN.md` → "Developer tooling built alongside the phases",
+`ARCHITECTURE.md` → "Mesh-wide monitoring dashboard and deployment-model
+sandbox"

@@ -27,7 +27,7 @@ tooling"). New feature work should add a companion doc under
 | 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.md](docs/bdd/design/local-durability.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md), [PRODUCTION-HARDENING.md](PRODUCTION-HARDENING.md) (buffer cap sizing — resolved) |
 | 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md) (includes Server Mesh Reconciliation diagram) |
 | 4 — Passive Monitoring | ✅ Done | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) |
-| Ancillary — Mesh Monitor Dashboard | 🚧 In progress (backend only, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [c4-diagrams.md](docs/c4-diagrams.md), [ui-wireframes.md](docs/ui-wireframes.md) |
+| Ancillary — Mesh Monitor Dashboard | ✅ Built (auth + backend tests still open, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [UI-ARCHITECTURE.md](UI-ARCHITECTURE.md) |
 | Ancillary — Event Lineage (Provenance) Schema | ✅ Done | [ADR-0006](docs/adr/0006-event-lineage-descriptive-provenance.md), [Data model §7](docs/06-data-model.md) |
 | 5 — Interactive Tunnel + Relay Fallback | ✅ Done | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [ADR-0007](docs/adr/0007-custom-reverse-tunnel-mechanism.md), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram) |
 | Ancillary — Order Book Demo (Commands/Queries/CQRS) | ✅ Done | [Data model §8](docs/06-data-model.md), `src/SyncMesh.OrderBook.Api` |
@@ -294,13 +294,14 @@ gateway-count decision, and offline/batch reconciliation design).
 Work outside the numbered phase plan — additive/layered on top of already-
 closed phases, not a reopening of their exit criteria.
 
-### Mesh Monitor Dashboard 🚧 In progress (backend only)
+### Mesh Monitor Dashboard ✅ Built (a few gaps remain — not phase-numbered)
 
-See [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md). Started ad hoc
-after Phase 4, not part of the original implementation guide. Backend
-(`SyncMesh.MeshMonitor.Api`), `ServerStatus`/`ServerMonitorPublisher`, and
-AppHost wiring exist; the SPA frontend, authentication, and a test project
-do not — see ADR-0005 Consequences for the full gap list.
+See [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md) (Accepted, per its
+2026-07-27 Amendment) and "Developer tooling built alongside the phases"
+above for the full, current status — backend, frontend (Vue 3 + Element
+Plus + vis-network), and frontend test coverage are all built; no backend
+test project, no authentication, and no live-Aspire visual confirmation
+yet (a sandbox-specific DCP quirk).
 
 ### Event Lineage (Provenance) Schema ✅ Done
 
