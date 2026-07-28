@@ -97,12 +97,56 @@ object" boilerplate differs.
     works, but it's worth remembering when writing a `canExecuteWhen`
     predicate (always read reactive state, e.g. `() => store.isReady`).
 
+## Auth: authStore holds the bearer token, mints tickets per connection
+
+See `docs/adr/0009-ticket-based-signalr-auth.md` and its full sequence/
+component diagrams in `docs/bdd/design/mesh-monitor-ticket-auth.md` for
+the *why*; this section is the frontend-specific *how*.
+
+- **`ConnectView`** is a real view (gets the same three-file split as
+  `TopologyView`/`DataView`, minus a `.types.ts` — no view-specific data
+  shapes beyond a plain string input, same reasoning as `App.vue`'s
+  exception) — shown instead of the whole app shell whenever
+  `authStore.isAuthenticated` is false (see `App.html`'s `v-if`). This
+  project doesn't issue bearer tokens itself, so there's no login
+  flow — an operator pastes one obtained from wherever it's actually
+  issued.
+- **`stores/authStore.ts`** is a second ViewModel alongside `meshStore`,
+  kept separate on purpose — `meshStore` stays about topology data, auth
+  concerns don't leak into it. Holds the bearer token in a plain `ref`,
+  **never persisted to localStorage/sessionStorage** — deliberate: this
+  dashboard has no TLS yet (`PRODUCTION-HARDENING.md`), and a page reload
+  clearing the token isn't a real cost worth trading for the exposure of
+  persisting it.
+- **`services/auth.ts`** does the actual ticket exchange: generates a
+  one-time secret (`crypto.getRandomValues`), calls `POST /auth/ticket`,
+  then computes `HMAC-SHA256(secret, ticketId)` itself via
+  `crypto.subtle` (uppercase hex — `Convert.ToHexString` on the .NET side
+  is uppercase, and the ticket store's lookup is a plain string
+  comparison, so casing must match exactly). `tests/unit/auth.spec.ts`
+  cross-checks this against Node's own `crypto` module as an independent
+  reference, not just against itself.
+- **`signalrClient.ts`'s hub connection uses `accessTokenFactory`**,
+  `@microsoft/signalr`'s built-in hook for "mint a fresh credential
+  before every (re)connection attempt" — the whole reason to reach for it
+  here: a ticket is single-use, so `withAutomaticReconnect()`'s retries
+  need a *new* ticket each time, not the URL string captured once at
+  `.withUrl()` build time. This is also why the backend accepts a query
+  parameter named `access_token` (SignalR sends it under that name,
+  non-configurable client-side) in addition to `ticket`.
+- **`GET /api/topology` uses the bearer token directly** (an
+  `Authorization` header via `authStore.authorizationHeader()`), not a
+  ticket — unlike the SignalR hub, a plain `fetch()` has no URL
+  constraint, so there's no reason to mint a ticket for it.
+
 ## Data loading: REST snapshot + SignalR push, topology derived client-side
 
-- `meshStore.loadSnapshot()` calls `GET /api/topology` once on mount (so a
-  freshly-opened tab renders immediately, not just on the next 5s tick).
-- `meshStore.connectLive()` opens a SignalR connection and applies each
-  `NodeUpdated` push into the same reactive node map.
+- `meshStore.loadSnapshot()` calls `GET /api/topology` once `ConnectView`'s
+  Connect command succeeds (so a freshly-opened tab renders immediately
+  once authenticated, not just on the next 5s tick).
+- `meshStore.connectLive()` opens a SignalR connection (via
+  `authStore.getSignalRAccessToken`) and applies each `NodeUpdated` push
+  into the same reactive node map.
 - **The topology (which node connects to which) is derived entirely from
   what each node self-reports about itself** — a daemon's
   `nearestServerUrl` matched against a server's own `url`; a server's
@@ -181,13 +225,24 @@ extra steps, not a replacement for Vite's hot-reloading dev loop.
   `vitest run`): the store's derived data (`edges`, `isStale`) and
   `useCommand`'s execute/canExecute/isExecuting state machine. These cover
   the actual logic; they don't touch the DOM.
+  - **`auth.spec.ts`**: `computeHashedTicket` is cross-checked against an
+    HMAC-SHA256 computed via Node's own `crypto` module (`createHmac`) —
+    an independent reference, not just asserting the function agrees with
+    itself — plus `mintTicket`'s POST body/header shape, via a stubbed
+    `fetch` (`vi.stubGlobal`).
+  - **`authStore.spec.ts`**: token lifecycle (`setToken`/`clearToken`/
+    `isAuthenticated`), and `getSignalRAccessToken` delegating to
+    `services/auth.ts` (mocked via `vi.mock`).
 - **One Playwright smoke test** (`tests/e2e/smoke.spec.ts`, run via
-  `npm run test:e2e`): mocks `GET /api/topology` (via `page.route`) and
-  loads the real app in a real browser, confirming the dashboard renders
-  real data end to end — the one thing only a browser can prove. SignalR's
-  negotiate request is left to 404 harmlessly (mocked to return 404) since
-  no backend is running for this test; that's fine, live push isn't what
-  this test is for.
+  `npm run test:e2e`): mocks `GET /api/topology` **and** `POST
+  /auth/ticket` (via `page.route`), drives `ConnectView`'s token input and
+  Connect button, then confirms the dashboard renders real data end to
+  end — the one thing only a browser can prove. The ticket exchange
+  itself is unit-tested directly (`auth.spec.ts`/`authStore.spec.ts`);
+  this test mocks it the same way it mocks the topology snapshot, rather
+  than re-proving it. SignalR's negotiate request is left to 404
+  harmlessly (mocked to return 404) since no backend is running for this
+  test; that's fine, live push isn't what this test is for.
   - **Gotcha, confirmed by a failing assertion**: Element Plus's
     `el-tabs` keeps *inactive* `el-tab-pane` content in the DOM (hidden via
     CSS, not unmounted), and Playwright's `getByText` matches substrings

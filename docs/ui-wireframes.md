@@ -1,8 +1,9 @@
 # UI Wireframes
 
 Salt wireframes for the Mesh Monitor Dashboard (`SyncMesh.MeshMonitor.Api` +
-its planned SPA — see ADR-0005). This is the first UI work in the project,
-per `CLAUDE.md`'s "Salt for UI wireframes if/when UI work starts."
+`web/mesh-monitor`, its Vue SPA — see ADR-0005). This is the first UI work
+in the project, per `CLAUDE.md`'s "Salt for UI wireframes if/when UI work
+starts."
 
 Render with any PlantUML renderer that supports Salt (VS Code PlantUML
 extension, plantuml.com server, or local `plantuml.jar`) — fenced
@@ -15,6 +16,11 @@ These wireframes deliberately mirror the C4 model's context → container →
 component progression instead of jumping straight to one fully-detailed
 screen:
 
+0. **Layer 0 — Connect Screen.** Gates every other layer below — see
+   `docs/bdd/design/mesh-monitor-ticket-auth.md`/ADR-0009. Not part of the
+   original C4 progression (added later, alongside auth), so numbered 0
+   rather than renumbering the layers that already matched Context/
+   Container/Component.
 1. **Layer 1 — Page layout.** Just the regions on the page and how they
    relate, no widget-level detail. Equivalent to a C4 Context diagram.
 2. **Layer 2 — Topology Panel detail.** A zoomed-in look at *one* Layer-1
@@ -28,6 +34,39 @@ Each layer only adds detail to the region it's zooming into; it doesn't
 restate the whole page. This keeps each diagram legible on its own and
 keeps a later change (e.g. redesigning just the node detail panel) from
 requiring the whole wireframe set to be redrawn.
+
+## Layer 0 — Connect Screen (gates every layer below)
+
+```plantuml
+@startsalt
+{
+  <b>Mesh Monitor Dashboard — Connect Screen
+  ==
+  {
+    "Connect to the Mesh"
+    "Paste a bearer token to connect. This dashboard
+    doesn't issue tokens itself — obtain one from
+    wherever your deployment issues them."
+    "Bearer token" | "**************"
+    [Connect]
+  }
+}
+@endsalt
+```
+
+- Shown whenever `authStore.isAuthenticated` is false — i.e. on first
+  load, and again if the operator explicitly disconnects. Nothing past
+  this screen (Layers 1-3 below) renders until a token is entered.
+- No login flow, no username/password — this project doesn't issue
+  bearer tokens itself (ADR-0009); the operator is expected to already
+  have one from wherever their deployment issues them.
+- On submit: `authStore.setToken()`, then `meshStore.loadSnapshot()` +
+  `meshStore.connectLive()` — see
+  `docs/bdd/design/mesh-monitor-ticket-auth.md`'s sequence diagram for
+  what happens next (the ticket exchange, not visible to the operator).
+- An error here (invalid token, network failure) shows inline and does
+  **not** advance past this screen — see `ConnectView.ts`'s
+  `connectCommand`.
 
 ## Layer 1 — Page Layout
 

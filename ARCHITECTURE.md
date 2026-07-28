@@ -280,23 +280,33 @@ per-instance remote monitoring (§4.5).
     built/production path serves the SPA same-origin from `wwwroot`
     (populated automatically on `dotnet build`, not just `publish` — see
     `UI-ARCHITECTURE.md`), no CORS needed there.
-  - **Ticket-exchange authentication.** `/api/topology` and the SignalR
-    hub both require either a bearer token or a redeemed ticket — see
-    [ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md) →
-    `src/SyncMesh.MeshMonitor.Api/Auth/`. Built specifically so a bearer
-    token never has to appear in the SignalR connection URL (the standard
-    `?access_token=` pattern is what this replaces): `POST /auth/ticket`
-    (requires the real bearer token, via header) exchanges a client-
-    generated one-time secret for a server-generated `ticketId`; the
-    client independently computes `HMAC-SHA256(key: secret, message:
-    ticketId)` and presents *that* — never the raw `ticketId`, never the
-    bearer token — as `?ticket=` (or `Authorization: Ticket <hash>` for
-    non-browser callers). `TicketAuthenticationHandler` redeems it exactly
-    once (`ITicketStore.TryRedeem` — remove-then-check, so a ticket can't
-    be raced or retried) and authenticates the request as the original
-    bearer token's identity. TLS is still not part of this — the token
-    and ticket both still cross the wire in cleartext, tracked in
-    `PRODUCTION-HARDENING.md`, unaffected by this addition.
+  - **Ticket-exchange authentication, backend and frontend.**
+    `/api/topology` and the SignalR hub both require either a bearer
+    token or a redeemed ticket — see
+    [ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md) and its full
+    sequence/component diagrams in
+    `docs/bdd/design/mesh-monitor-ticket-auth.md`.
+    `src/SyncMesh.MeshMonitor.Api/Auth/`: `POST /auth/ticket` (requires
+    the real bearer token, via header) exchanges a client-generated
+    one-time secret for a server-generated `ticketId`; the client
+    independently computes `HMAC-SHA256(key: secret, message: ticketId)`
+    and presents *that* — never the raw `ticketId`, never the bearer
+    token — as `?access_token=`/`?ticket=` (or `Authorization: Ticket
+    <hash>` for non-browser callers). `TicketAuthenticationHandler`
+    redeems it exactly once (`ITicketStore.TryRedeem` — remove-then-check,
+    so a ticket can't be raced or retried) and authenticates the request
+    as the original bearer token's identity.
+    `web/mesh-monitor` (`ConnectView`, `stores/authStore.ts`,
+    `services/auth.ts`) implements the client side: a token-entry screen
+    gates the app; `signalrClient.ts`'s hub connection uses
+    `accessTokenFactory` (`@microsoft/signalr`'s own "mint a fresh
+    credential before every (re)connection attempt" hook — the reason the
+    query parameter is named `access_token`, not configurable
+    client-side, and why the handler accepts both names) so a reconnect
+    mints a new ticket instead of resending an already-consumed one.
+    TLS is still not part of this — the token and ticket both still cross
+    the wire in cleartext, tracked in `PRODUCTION-HARDENING.md`,
+    unaffected by this addition.
 - **`deploy/compose/*.yml` + `Properties/launchSettings.json` profiles**
   on `SyncMesh.Daemon`/`SyncMesh.ServerHost` let any of the six documented
   deployment models be stood up by hand for manual observation — see
@@ -715,6 +725,25 @@ and a fenced ```gherkin``` block) and `tools/FeatureDocExtractor`.
 - **`dotnet-ef` tool**: installed as a local tool via
   `.config/dotnet-tools.json` (repo-scoped), not global — run `dotnet tool
   restore` after cloning rather than installing it globally.
+- **Known environment limitation** (this specific machine, not the repo):
+  `node`/`npm` on `PATH` resolve to wrapper batch scripts from an
+  unrelated project (`C:\repo\oobdev\RunScripts\{node,npm}.bat`) that
+  shell out to `docker run --interactive --tty node:latest ...`. Run
+  non-interactively (as MSBuild's `<Exec>` in `BuildFrontend` does, or
+  any of this repo's own tooling), that `docker run` fails to allocate a
+  TTY and the wrapper silently no-ops — `dotnet build` still reports
+  success, but `wwwroot/` never actually gets populated (confirmed: it
+  held only `.gitkeep` despite this whole session's earlier builds all
+  reporting 0 errors). **`dotnet build`/`dotnet run` cannot be trusted
+  to have actually built the frontend on this machine** until this is
+  fixed. Worked around by invoking the same Docker image directly,
+  without `--tty`: `docker run --rm --volume "<repo>/web/mesh-monitor:/current/src/" --workdir /current/src/ node:latest npm install` (and `npm run build` /
+  `npm run test:unit`) — on Windows via Git Bash, also set
+  `MSYS_NO_PATHCONV=1` or MSYS mangles the `/current/src/` path. The real
+  fix is either correcting this machine's `PATH` so a real `node`/`npm`
+  resolve, or making the wrapper drop `--tty` when stdin isn't a TTY —
+  neither is this repo's concern to fix, just worth knowing if a build
+  here silently produces a stale dashboard.
 - **Target framework**: `net10.0` (current LTS, matches installed SDK
   10.0.301). Solution file is `.slnx` — `dotnet new sln` produces that
   format by default under the .NET 10 SDK; used as-is rather than forcing

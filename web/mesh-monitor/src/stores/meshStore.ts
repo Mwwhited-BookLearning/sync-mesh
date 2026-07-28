@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { nodeKey, type TopologyNode, type DaemonStatus, type ServerStatus } from '../types/monitor'
 import { fetchTopologySnapshot } from '../services/api'
 import { connectMeshHub } from '../services/signalrClient'
+import { useAuthStore } from './authStore'
 
 // Default publish interval on the .NET side (DaemonMonitorOptions/
 // ServerMonitorOptions) is 5s; a node is considered stale once it's missed
@@ -90,22 +91,27 @@ export const useMeshStore = defineStore('mesh', () => {
   })
 
   async function loadSnapshot(): Promise<void> {
-    const snapshot = await fetchTopologySnapshot()
+    const auth = useAuthStore()
+    const snapshot = await fetchTopologySnapshot(auth.authorizationHeader())
     for (const node of snapshot) {
       upsert(node)
     }
   }
 
   function connectLive(): void {
-    connectMeshHub({
-      onNodeUpdated: upsert,
-      onConnected: () => {
-        isConnected.value = true
+    const auth = useAuthStore()
+    connectMeshHub(
+      {
+        onNodeUpdated: upsert,
+        onConnected: () => {
+          isConnected.value = true
+        },
+        onDisconnected: () => {
+          isConnected.value = false
+        },
       },
-      onDisconnected: () => {
-        isConnected.value = false
-      },
-    })
+      () => auth.getSignalRAccessToken(),
+    )
   }
 
   return { nodeList, daemons, servers, edges, isConnected, isStale, upsert, loadSnapshot, connectLive }

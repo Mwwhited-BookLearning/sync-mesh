@@ -49,10 +49,21 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/hubs/mesh-monitor/**', async (route) => {
     await route.fulfill({ status: 404, body: '' })
   })
+  // The dashboard is now gated behind the ticket exchange (see
+  // docs/adr/0009-ticket-based-signalr-auth.md) — mocked here the same
+  // way the topology snapshot is, since this test is about rendering,
+  // not re-proving the auth flow itself (that's unit-tested directly:
+  // tests/unit/auth.spec.ts, tests/unit/authStore.spec.ts).
+  await page.route('**/auth/ticket', async (route) => {
+    await route.fulfill({ json: { ticketId: 'e2e-test-ticket-id' } })
+  })
 })
 
 test('loads the dashboard and shows the REST snapshot in both views', async ({ page }) => {
   await page.goto('/')
+
+  await page.getByPlaceholder('Bearer token').fill('e2e-test-bearer-token')
+  await page.getByRole('button', { name: 'Connect' }).click()
 
   await expect(page.getByRole('heading', { name: 'SyncMesh Monitor' })).toBeVisible()
 

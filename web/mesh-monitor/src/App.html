@@ -1,4 +1,6 @@
-<el-container class="app-shell">
+<ConnectView v-if="!auth.isAuthenticated" />
+
+<el-container v-else class="app-shell">
   <el-header class="app-shell__header">
     <h1>SyncMesh Monitor</h1>
     <el-tag :type="store.isConnected ? 'success' : 'danger'">

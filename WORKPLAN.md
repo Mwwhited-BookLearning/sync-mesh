@@ -27,7 +27,7 @@ tooling"). New feature work should add a companion doc under
 | 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.md](docs/bdd/design/local-durability.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md), [PRODUCTION-HARDENING.md](PRODUCTION-HARDENING.md) (buffer cap sizing — resolved) |
 | 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md) (includes Server Mesh Reconciliation diagram) |
 | 4 — Passive Monitoring | ✅ Done | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) |
-| Ancillary — Mesh Monitor Dashboard | ✅ Done (TLS deferred to PRODUCTION-HARDENING.md, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [UI-ARCHITECTURE.md](UI-ARCHITECTURE.md) |
+| Ancillary — Mesh Monitor Dashboard | ✅ Done (TLS deferred to PRODUCTION-HARDENING.md, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md), [mesh-monitor-ticket-auth.md](docs/bdd/design/mesh-monitor-ticket-auth.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [UI-ARCHITECTURE.md](UI-ARCHITECTURE.md) |
 | Ancillary — Event Lineage (Provenance) Schema | ✅ Done | [ADR-0006](docs/adr/0006-event-lineage-descriptive-provenance.md), [Data model §7](docs/06-data-model.md) |
 | 5 — Interactive Tunnel + Relay Fallback | ✅ Done | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [ADR-0007](docs/adr/0007-custom-reverse-tunnel-mechanism.md), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram) |
 | Ancillary — Order Book Demo (Commands/Queries/CQRS) | ✅ Done | [Data model §8](docs/06-data-model.md), `src/SyncMesh.OrderBook.Api` |
@@ -314,11 +314,23 @@ running end to end, this dashboard included; and both `/api/topology` and
 the SignalR hub now require authentication — a bearer token, or a
 short-lived single-use ticket exchanged for one so the token never has to
 appear in the SignalR connection URL (see
-[ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md), live-verified
-end to end: minted a JWT, exchanged it for a ticket, redeemed the ticket
-via `?ticket=` with no bearer token present, confirmed a second
-redemption attempt correctly fails). TLS for this dashboard remains
-deferred to `PRODUCTION-HARDENING.md`, not resolved by adding auth.
+[ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md), backend
+live-verified end to end via raw HTTP: minted a JWT, exchanged it for a
+ticket, redeemed the ticket via `?ticket=` with no bearer token present,
+confirmed a second redemption attempt correctly fails). The frontend now
+implements this too — `ConnectView` (token entry), `authStore`
+(in-memory-only token, mints a fresh ticket per SignalR (re)connection
+via `accessTokenFactory`), `services/auth.ts` (`computeHashedTicket`
+cross-checked against Node's own `crypto` module in a unit test, not just
+against itself) — see
+[mesh-monitor-ticket-auth.md](docs/bdd/design/mesh-monitor-ticket-auth.md)
+for the sequence/component diagrams and `docs/ui-wireframes.md`'s new
+"Layer 0" for the Connect screen. Verified: `vue-tsc` type-check clean,
+`vite build` clean, 22/22 frontend unit tests passing (up from 10),
+1/1 Playwright e2e test passing, and the real built output confirmed
+served correctly by a live `SyncMesh.MeshMonitor.Api` instance. TLS for
+this dashboard remains deferred to `PRODUCTION-HARDENING.md`, not
+resolved by adding auth.
 
 ### Event Lineage (Provenance) Schema ✅ Done
 

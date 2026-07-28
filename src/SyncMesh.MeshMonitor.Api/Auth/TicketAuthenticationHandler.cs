@@ -42,8 +42,17 @@ public sealed class TicketAuthenticationHandler(
     {
         // Query string first — the whole reason this scheme exists: a
         // browser's WebSocket handshake (SignalR) can't set a custom
-        // Authorization header at all, only a URL.
-        var fromQuery = Request.Query["ticket"].FirstOrDefault();
+        // Authorization header at all, only a URL. Two accepted param
+        // names: "access_token" is what @microsoft/signalr's own
+        // accessTokenFactory option sends automatically before every
+        // (re)connection attempt (not configurable client-side, hence
+        // reusing it here rather than inventing a third mechanism just to
+        // rename a query parameter) — despite the name, the *value* is
+        // still this handler's hashed ticket, never the real bearer
+        // token. "ticket" is accepted too, for any non-SignalR caller
+        // that would rather use the more descriptive name.
+        var fromQuery = Request.Query["access_token"].FirstOrDefault()
+            ?? Request.Query["ticket"].FirstOrDefault();
         if (!string.IsNullOrEmpty(fromQuery))
         {
             return fromQuery;

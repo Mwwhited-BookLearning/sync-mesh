@@ -113,10 +113,61 @@ moments of receiving `ticketId`), not a standing credential.
   concern for this dashboard (bearer tokens and tickets both still cross
   the wire in cleartext without TLS) remains tracked in
   `PRODUCTION-HARDENING.md`, unaffected by this change.
+- **Confirmed via a real-browser check (not just unit tests): a secure
+  context is a hard functional requirement, not just a security
+  nice-to-have.** `computeHashedTicket` uses `crypto.subtle`
+  (`SubtleCrypto.importKey`/`sign`), which browsers only expose in a
+  secure context — HTTPS, or the literal hostname `localhost` (an
+  explicit browser-security carve-out for local development, not a
+  general "any local network" exception). Verified directly: the same
+  frontend served from `http://host.docker.internal:5299` (a real
+  backend, not mocked) failed the SignalR handshake with `Cannot read
+  properties of undefined (reading 'importKey')` — `crypto.subtle` was
+  simply `undefined` — while the exact same code serving from
+  `http://localhost:...` works (this is what
+  `tests/e2e/smoke.spec.ts` actually exercises, via Vite's dev server on
+  `localhost`). Concretely: this dashboard **will not connect at all**
+  once accessed via any hostname other than `localhost` unless it's
+  served over HTTPS — not degraded, not slower, `POST /auth/ticket`
+  succeeds but the client-side hash computation throws. This raises the
+  stakes on `PRODUCTION-HARDENING.md`'s "no TLS yet" item for this
+  dashboard specifically: it's no longer just a confidentiality gap, it's
+  the difference between the dashboard working or not for any operator
+  reaching it by IP address or a real hostname.
+
+## Amendment (2026-07-28) — frontend wired up, design doc added
+
+The frontend side (`web/mesh-monitor`) now actually implements this flow
+— previously only the backend existed, verified via raw HTTP calls; the
+dashboard itself had no way to authenticate at all. New: `ConnectView`
+(token entry, gates the rest of the app), `stores/authStore.ts` (holds
+the bearer token in memory only — no localStorage, see its own doc
+comment), `services/auth.ts` (`mintTicket`/`computeHashedTicket` via Web
+Crypto, cross-checked against Node's `crypto` module in
+`tests/unit/auth.spec.ts` to confirm it matches
+`TicketHasher.Compute` byte-for-byte). `signalrClient.ts`'s hub
+connection now uses `accessTokenFactory` — @microsoft/signalr's own
+extensibility point for "mint a fresh credential before every (re)connect
+attempt," which is exactly what a single-use ticket needs (a reconnect
+can't resend the one already redeemed). This is also why the query
+parameter this handler accepts is `access_token`, not just `ticket` —
+that's the name SignalR's client sends, not configurable client-side; the
+handler accepts both.
+
+Full sequence diagram and component diagram (backend + frontend
+together):
+`docs/bdd/design/mesh-monitor-ticket-auth.md`. Wireframe for the new
+Connect screen: `docs/ui-wireframes.md` → "Layer 0."
 
 ## Related
 
 `docs/adr/0005-mesh-monitor-dashboard.md` (the dashboard this protects),
+`docs/bdd/design/mesh-monitor-ticket-auth.md` (sequence + component
+diagrams, both backend and frontend),
+`docs/ui-wireframes.md` (Layer 0 — Connect Screen),
 `PRODUCTION-HARDENING.md` (TLS, still deferred),
-`src/SyncMesh.MeshMonitor.Api/Auth/` (implementation),
-`tests/SyncMesh.MeshMonitor.Tests` (`TicketStoreTests`, `TicketHasherTests`)
+`src/SyncMesh.MeshMonitor.Api/Auth/` (backend implementation),
+`web/mesh-monitor/src/{stores/authStore.ts,services/auth.ts,views/ConnectView.*}`
+(frontend implementation),
+`tests/SyncMesh.MeshMonitor.Tests` (`TicketStoreTests`, `TicketHasherTests`),
+`web/mesh-monitor/tests/unit/{auth,authStore}.spec.ts`

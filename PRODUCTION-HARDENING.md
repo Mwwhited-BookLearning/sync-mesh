@@ -39,6 +39,14 @@ ADR-0002, and ADR-0004.
   both the bearer token (once, at ticket issuance) and the ticket value
   cross the wire in cleartext without TLS. TLS termination for this
   dashboard is still this section's concern, not resolved by ADR-0009.
+  **This is no longer just a confidentiality gap** — confirmed via a
+  real-browser check (ADR-0009's Amendment): the frontend's ticket-hash
+  computation uses `crypto.subtle`, which browsers refuse to expose
+  outside a secure context (HTTPS, or the literal hostname `localhost`).
+  Reached by any other hostname/IP without TLS, the dashboard's SignalR
+  connection **fails outright**, not just insecurely — TLS here is a
+  functional requirement for any real (non-localhost) deployment, not
+  only a hardening nice-to-have.
 - **What a real deployment would still need**: `SslStream`/TLS
   termination on every connection listed above; certificate provisioning
   and rotation; a bearer-token or mTLS service-credential handshake

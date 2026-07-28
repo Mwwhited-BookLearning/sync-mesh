@@ -106,9 +106,10 @@ instance can see the whole reachable mesh from a single connection point.
 
 ## Component Diagram — Mesh Monitor Dashboard (C4 Level 3)
 
-See ADR-0005. Backend only today — the SPA component below is planned, not
-yet built (no `web/mesh-monitor` frontend exists), and there is no
-authentication component in front of the hub or REST endpoint yet.
+See ADR-0005 (SPA built, per its Amendment) and ADR-0009 (ticket-based
+auth in front of both the hub and the REST endpoint — full detail,
+including the auth-specific components and the ticket-exchange sequence,
+in `docs/bdd/design/mesh-monitor-ticket-auth.md`, not repeated here).
 
 ```plantuml
 @startuml component-mesh-monitor
@@ -119,19 +120,22 @@ title Component Diagram — Mesh Monitor Dashboard (SyncMesh.MeshMonitor.Api)
 Container_Boundary(meshMonitorApi, "Mesh Monitor Dashboard — Backend") {
     Component(monitorSubscriber, "Monitor Subscriber", "NATS client, BackgroundService", "Subscribes to monitor.>, parses DaemonStatus/ServerStatus by NodeKind")
     Component(topologyStore, "Topology Store", "In-memory ConcurrentDictionary", "Latest-known snapshot per (siteId, instanceId); non-durable by design")
-    Component(topologyApi, "Topology REST Endpoint", "Minimal API", "GET /api/topology — snapshot for a freshly opened tab")
-    Component(monitorHub, "SignalR Hub", "MeshMonitorHub", "Server-push only; broadcasts NodeUpdated to connected tabs")
-    Component(staticFiles, "Static SPA Host", "UseStaticFiles + MapFallbackToFile", "Serves web/mesh-monitor's build output — not yet built")
+    Component(topologyApi, "Topology REST Endpoint", "Minimal API, Bearer-or-Ticket", "GET /api/topology — snapshot for a freshly opened tab")
+    Component(monitorHub, "SignalR Hub", "MeshMonitorHub, Bearer-or-Ticket", "Server-push only; broadcasts NodeUpdated to connected tabs")
+    Component(auth, "Auth subsystem", "JwtBearer + Ticket scheme", "See docs/bdd/design/mesh-monitor-ticket-auth.md's Component Diagram")
+    Component(staticFiles, "Static SPA Host", "UseStaticFiles + MapFallbackToFile", "Serves web/mesh-monitor's build output")
 }
 
-Component(spa, "Mesh Monitor SPA", "Planned — Vue", "Not yet implemented; see ADR-0005 Consequences") #line.dashed
+Component(spa, "Mesh Monitor SPA", "Vue 3 + Element Plus + vis-network", "web/mesh-monitor — see UI-ARCHITECTURE.md")
 
 Rel(monitorSubscriber, topologyStore, "Upserts parsed node")
 Rel(monitorSubscriber, monitorHub, "Pushes NodeUpdated on every message")
 Rel(topologyApi, topologyStore, "Reads snapshot")
+Rel(topologyApi, auth, "Authenticate via")
+Rel(monitorHub, auth, "Authenticate via")
 Rel(spa, topologyApi, "Initial load")
 Rel(spa, monitorHub, "Live updates")
-Rel(staticFiles, spa, "Serves build output (once it exists)")
+Rel(staticFiles, spa, "Serves build output")
 
 @enduml
 ```

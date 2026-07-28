@@ -1,0 +1,30 @@
+<div class="connect-view">
+  <el-card class="connect-view__card">
+    <template #header>Connect to the Mesh</template>
+
+    <p>
+      Paste a bearer token to connect. This dashboard doesn't issue tokens
+      itself — obtain one from wherever your deployment issues them.
+    </p>
+
+    <el-input
+      v-model="tokenInput"
+      type="password"
+      show-password
+      placeholder="Bearer token"
+      @keyup.enter="connectCommand.execute"
+    />
+
+    <el-alert v-if="error" :title="error" type="error" :closable="false" class="connect-view__error" />
+
+    <el-button
+      type="primary"
+      :disabled="!connectCommand.canExecute.value"
+      :loading="connectCommand.isExecuting.value"
+      @click="connectCommand.execute"
+      class="connect-view__submit"
+    >
+      Connect
+    </el-button>
+  </el-card>
+</div>

@@ -33,3 +33,23 @@ body,
 .data-view__tabs {
   margin-top: 12px;
 }
+
+.connect-view {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.connect-view__card {
+  width: 420px;
+}
+
+.connect-view__error {
+  margin-top: 12px;
+}
+
+.connect-view__submit {
+  margin-top: 12px;
+  width: 100%;
+}
