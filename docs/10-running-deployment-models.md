@@ -20,7 +20,7 @@ same on-prem shape stood up independently of AppHost.
    `SyncMesh.ServerHost` — from Visual Studio/VS Code's run/debug profile
    dropdown, or `dotnet run --project src/SyncMesh.Daemon --launch-profile <Name>`.
 3. Optionally point the mesh monitor at it:
-   `MeshMonitor__NatsUrl=nats://localhost:<hub-port> dotnet run --project src/SyncMesh.MeshMonitor.Api`,
+   `MeshMonitor__NatsUrls__0=nats://localhost:<hub-port> dotnet run --project src/SyncMesh.MeshMonitor.Api`,
    then open the dashboard (`npm run dev` in `web/mesh-monitor`, or the
    API's own served build).
 4. Tear down: `docker compose --profile <model> down`.

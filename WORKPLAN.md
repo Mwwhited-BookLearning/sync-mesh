@@ -27,7 +27,7 @@ tooling"). New feature work should add a companion doc under
 | 2 — Local Daemon ↔ Nearest Server (NATS Leaf Node) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Amendment), [local-durability.md](docs/bdd/design/local-durability.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md), [PRODUCTION-HARDENING.md](PRODUCTION-HARDENING.md) (buffer cap sizing — resolved) |
 | 3 — Server Mesh Reconciliation (Gateways/Supercluster) | ✅ Done | [ADR-0002](docs/adr/0002-nats-leaf-nodes-for-transport.md) (2026-07-23 Phase 3 Amendment), [ADR-0003](docs/adr/0003-hybrid-logical-clock-ordering.md), [Data model §3](docs/06-data-model.md), [event-ordering-and-idempotency.md](docs/bdd/design/event-ordering-and-idempotency.md), [nearest-neighbor-sync.md](docs/bdd/design/nearest-neighbor-sync.md) (includes Server Mesh Reconciliation diagram) |
 | 4 — Passive Monitoring | ✅ Done | [Data model §5](docs/06-data-model.md) (NATS subject naming), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) |
-| Ancillary — Mesh Monitor Dashboard | ✅ Built (auth + backend tests still open, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [UI-ARCHITECTURE.md](UI-ARCHITECTURE.md) |
+| Ancillary — Mesh Monitor Dashboard | ✅ Done (auth deferred to PRODUCTION-HARDENING.md, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [UI-ARCHITECTURE.md](UI-ARCHITECTURE.md) |
 | Ancillary — Event Lineage (Provenance) Schema | ✅ Done | [ADR-0006](docs/adr/0006-event-lineage-descriptive-provenance.md), [Data model §7](docs/06-data-model.md) |
 | 5 — Interactive Tunnel + Relay Fallback | ✅ Done | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [ADR-0007](docs/adr/0007-custom-reverse-tunnel-mechanism.md), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram) |
 | Ancillary — Order Book Demo (Commands/Queries/CQRS) | ✅ Done | [Data model §8](docs/06-data-model.md), `src/SyncMesh.OrderBook.Api` |
@@ -54,15 +54,16 @@ sandbox" and `UI-ARCHITECTURE.md` (frontend-specific).
       its own `wwwroot` (populated automatically on `dotnet build`, not
       just `publish` — see `UI-ARCHITECTURE.md`). Wired into
       `SyncMesh.AppHost` as the `mesh-monitor-api` resource.
-      10 Vitest unit tests + 1 Playwright e2e smoke test, all passing.
-      **Not yet visually confirmed live in the Aspire dashboard** — DCP
-      hung on every attempt in this sandbox session (traced to orphaned
-      `dcp` processes from earlier killed runs, confirmed unrelated to
-      this resource via an isolation test — see `ARCHITECTURE.md`). The
-      resource is configured correctly per Aspire's standard automatic
-      HTTP-endpoint-from-launchSettings detection; re-verify visually
-      next session (`dotnet run --project src/SyncMesh.AppHost`, check
-      the dashboard's Resources view for `mesh-monitor-api`'s URL).
+      10 Vitest unit tests + 1 Playwright e2e smoke test, all passing,
+      plus a backend suite (`tests/SyncMesh.MeshMonitor.Tests`, 9 tests).
+      Subscribes to **both** sites' NATS hubs (`MeshMonitorApiOptions
+      .NatsUrls`), not just site A's. **Confirmed live** (2026-07-27) in
+      the full two-site `SyncMesh.AppHost` topology, once the topology's
+      own startup issues were resolved — see `ARCHITECTURE.md` →
+      "AppHost dev topology: server tier runs on SQLite" (the earlier
+      "DCP hang" diagnosis in this session was wrong; the real cause was
+      a Postgres password/data-volume mismatch plus two other Aspire/DCP
+      orchestration issues, all fixed).
 - [x] **Deployment-model sandbox**: `docker-compose.yml` (repo root, one
       Compose profile per model in `docs/08-deployment-models.md`) +
       `Properties/launchSettings.json` profiles on `SyncMesh.Daemon`/
@@ -294,14 +295,20 @@ gateway-count decision, and offline/batch reconciliation design).
 Work outside the numbered phase plan — additive/layered on top of already-
 closed phases, not a reopening of their exit criteria.
 
-### Mesh Monitor Dashboard ✅ Built (a few gaps remain — not phase-numbered)
+### Mesh Monitor Dashboard ✅ Done (auth deferred to PRODUCTION-HARDENING.md)
 
 See [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md) (Accepted, per its
-2026-07-27 Amendment) and "Developer tooling built alongside the phases"
-above for the full, current status — backend, frontend (Vue 3 + Element
-Plus + vis-network), and frontend test coverage are all built; no backend
-test project, no authentication, and no live-Aspire visual confirmation
-yet (a sandbox-specific DCP quirk).
+2026-07-27 Amendments) and "Developer tooling built alongside the phases"
+above for the full, current status. As of 2026-07-27: backend, frontend
+(Vue 3 + Element Plus + vis-network), frontend test coverage, and a
+backend test project (`tests/SyncMesh.MeshMonitor.Tests` — `TopologyStore`
+fold logic + `MonitorSubscriber` parsing, 9 tests) are all built; the
+dual-hub telemetry gap (only site A's NATS hub was subscribed to) is
+fixed (`MeshMonitorApiOptions.NatsUrls`, one subscribe loop per site); and
+the live two-site AppHost topology has been confirmed running end to end,
+this dashboard included. Authentication on `/api/topology`/the SignalR
+hub remains deferred to `PRODUCTION-HARDENING.md`, not tracked as a gap
+here.
 
 ### Event Lineage (Provenance) Schema ✅ Done
 
@@ -357,13 +364,19 @@ origins) is a load-bearing constraint, not an arbitrary choice.
   background publisher in this codebase.
 - **`SyncMesh.AppHost` expanded to a full two-site multi-server mesh** —
   previously wired exactly one daemon + one server; now two complete
-  sites (`site-a`/`site-b`, each own Postgres database, NATS hub+leaf
-  pair, `ServerHost`, `Daemon`), with the two `ServerHost`s peered
-  directly (`ServerMeshOptions.Peers`, the same point-to-point mechanism
-  proved in Phase 3's tests, now live in the dev topology for the first
-  time). `orderbook-api`'s read model polls only site A's database —
-  orders placed at site B converging into that view is the concrete
-  proof the mesh's convergence promise holds.
+  sites (`site-a`/`site-b`, each own SQLite event-store file — see
+  [ADR-0001](docs/adr/0001-event-store-on-ef-core.md)'s Amendment for why
+  this dev topology's server tier runs on SQLite rather than Postgres —
+  NATS hub+leaf pair, `ServerHost`, `Daemon`), with the two `ServerHost`s
+  peered directly (`ServerMeshOptions.Peers`, the same point-to-point
+  mechanism proved in Phase 3's tests, now live in the dev topology for
+  the first time — and confirmed live, 2026-07-27: an order placed
+  through site-b's daemon appeared in `orderbook-api`'s read model, built
+  from *site A's* database only, within a few seconds; cancel routed back
+  through site B correctly too). `orderbook-api`'s read model polling
+  only site A's database — with site B's orders converging into it — is
+  the concrete proof the mesh's convergence promise holds, not left as
+  "should work in theory."
 - **Deliberately no trade matching** — a real distributed matching engine
   needs strong consistency this mesh's design explicitly doesn't provide
   (see `ARCHITECTURE.md`'s "full eventual replication, not consensus"
@@ -371,10 +384,10 @@ origins) is a load-bearing constraint, not an arbitrary choice.
   demonstrate it. Confirmed with the user before implementation.
 - **Test coverage**: `tests/SyncMesh.OrderBook.Tests` — unit tests of
   `OrderBookStore`'s fold logic only (place/cancel/sort/convergence), no
-  BDD/Testcontainers suite — a deliberate scope choice matching the
-  existing precedent that `SyncMesh.MeshMonitor.Api` itself has no
-  backend test project either; this is a worked example, not a phase
-  deliverable with entry/exit criteria.
+  BDD/Testcontainers suite — a deliberate scope choice, matching
+  `SyncMesh.MeshMonitor.Api`'s own unit-tests-only coverage
+  (`tests/SyncMesh.MeshMonitor.Tests`); this is a worked example, not a
+  phase deliverable with entry/exit criteria.
 
 ---
 

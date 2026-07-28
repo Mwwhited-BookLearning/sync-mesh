@@ -7,9 +7,21 @@ var builder = DistributedApplication.CreateBuilder(args);
 // something you can actually watch happen via the Order Book demo
 // (docs/06-data-model.md's Order Book Example Domain section) rather
 // than only something proven in tests.
-var postgres = builder.AddPostgres("postgres").WithDataVolume();
-var eventStoreDbA = postgres.AddDatabase("EventStoreA");
-var eventStoreDbB = postgres.AddDatabase("EventStoreB");
+//
+// Server tier uses SQLite here, not Postgres/SQL Server (see ADR-0001's
+// Amendment): a containerized Postgres in this sandbox hit a compounding
+// set of Aspire/DCP issues (data-volume/password mismatch across runs, a
+// WaitFor deadlock on the database resource, a dual-stack "localhost"
+// NATS connection failure) that are about Aspire/Docker orchestration,
+// not this project's own event-sourcing model — not worth the ongoing
+// friction for a dev/POC topology. Each site's ServerHost gets its own
+// file, both under one absolute directory so orderbook-api (a different
+// project, different working directory) can point at site A's file by
+// the same absolute path.
+var dataDir = Path.Combine(builder.AppHostDirectory, ".data");
+Directory.CreateDirectory(dataDir);
+var eventStoreAPath = Path.Combine(dataDir, "site-a-events.db");
+var eventStoreBPath = Path.Combine(dataDir, "site-b-events.db");
 
 // NATS leaf-node topology per site (ADR-0002). Generic containers, not
 // the Aspire.Hosting.NATS package, because a real leaf-node relationship
@@ -48,30 +60,28 @@ var natsLeafB = builder.AddContainer("nats-leaf-b", "nats", "2-alpine")
 // TCP listeners aren't Aspire-managed endpoints, so they need distinct
 // literal ports, not dynamic allocation).
 var serverHostA = builder.AddProject<Projects.SyncMesh_ServerHost>("serverhost-a")
-    .WithReference(eventStoreDbA)
-    .WaitFor(eventStoreDbA)
-    .WithEnvironment("EventStore__Provider", "Postgres")
+    .WithEnvironment("ConnectionStrings__EventStore", $"Data Source={eventStoreAPath}")
+    .WithEnvironment("EventStore__Provider", "Sqlite")
     .WithEnvironment("ServerHost__Monitor__SiteId", "site-a")
     .WithEnvironment("ServerHost__Monitor__InstanceId", "server-a")
     .WithEnvironment(context =>
     {
         var endpoint = natsHubA.GetEndpoint("client");
-        context.EnvironmentVariables["ServerHost__Nats__Url"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.Host)}:{endpoint.Property(EndpointProperty.Port)}");
+        context.EnvironmentVariables["ServerHost__Nats__Url"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.IPV4Host)}:{endpoint.Property(EndpointProperty.Port)}");
     })
     .WithEnvironment(context =>
     {
         var peerEndpoint = natsHubB.GetEndpoint("client");
         context.EnvironmentVariables["ServerHost__Mesh__Peers__0__SiteId"] = "site-b";
-        context.EnvironmentVariables["ServerHost__Mesh__Peers__0__Url"] = ReferenceExpression.Create($"nats://{peerEndpoint.Property(EndpointProperty.Host)}:{peerEndpoint.Property(EndpointProperty.Port)}");
+        context.EnvironmentVariables["ServerHost__Mesh__Peers__0__Url"] = ReferenceExpression.Create($"nats://{peerEndpoint.Property(EndpointProperty.IPV4Host)}:{peerEndpoint.Property(EndpointProperty.Port)}");
     })
     .WaitFor(natsHubA);
 
 // Site B's server — same shape as site A, peered back at it, on distinct
 // tunnel ports.
 var serverHostB = builder.AddProject<Projects.SyncMesh_ServerHost>("serverhost-b")
-    .WithReference(eventStoreDbB)
-    .WaitFor(eventStoreDbB)
-    .WithEnvironment("EventStore__Provider", "Postgres")
+    .WithEnvironment("ConnectionStrings__EventStore", $"Data Source={eventStoreBPath}")
+    .WithEnvironment("EventStore__Provider", "Sqlite")
     .WithEnvironment("ServerHost__Monitor__SiteId", "site-b")
     .WithEnvironment("ServerHost__Monitor__InstanceId", "server-b")
     .WithEnvironment("ServerHost__Tunnel__AgentListenPort", "7788")
@@ -79,13 +89,13 @@ var serverHostB = builder.AddProject<Projects.SyncMesh_ServerHost>("serverhost-b
     .WithEnvironment(context =>
     {
         var endpoint = natsHubB.GetEndpoint("client");
-        context.EnvironmentVariables["ServerHost__Nats__Url"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.Host)}:{endpoint.Property(EndpointProperty.Port)}");
+        context.EnvironmentVariables["ServerHost__Nats__Url"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.IPV4Host)}:{endpoint.Property(EndpointProperty.Port)}");
     })
     .WithEnvironment(context =>
     {
         var peerEndpoint = natsHubA.GetEndpoint("client");
         context.EnvironmentVariables["ServerHost__Mesh__Peers__0__SiteId"] = "site-a";
-        context.EnvironmentVariables["ServerHost__Mesh__Peers__0__Url"] = ReferenceExpression.Create($"nats://{peerEndpoint.Property(EndpointProperty.Host)}:{peerEndpoint.Property(EndpointProperty.Port)}");
+        context.EnvironmentVariables["ServerHost__Mesh__Peers__0__Url"] = ReferenceExpression.Create($"nats://{peerEndpoint.Property(EndpointProperty.IPV4Host)}:{peerEndpoint.Property(EndpointProperty.Port)}");
     })
     .WaitFor(natsHubB);
 
@@ -100,7 +110,7 @@ builder.AddProject<Projects.SyncMesh_Daemon>("daemon-a")
     .WithEnvironment(context =>
     {
         var endpoint = natsLeafA.GetEndpoint("client");
-        context.EnvironmentVariables["Daemon__Nats__Url"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.Host)}:{endpoint.Property(EndpointProperty.Port)}");
+        context.EnvironmentVariables["Daemon__Nats__Url"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.IPV4Host)}:{endpoint.Property(EndpointProperty.Port)}");
     })
     .WaitFor(natsLeafA);
 
@@ -113,25 +123,26 @@ builder.AddProject<Projects.SyncMesh_Daemon>("daemon-b")
     .WithEnvironment(context =>
     {
         var endpoint = natsLeafB.GetEndpoint("client");
-        context.EnvironmentVariables["Daemon__Nats__Url"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.Host)}:{endpoint.Property(EndpointProperty.Port)}");
+        context.EnvironmentVariables["Daemon__Nats__Url"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.IPV4Host)}:{endpoint.Property(EndpointProperty.Port)}");
     })
     .WaitFor(natsLeafB);
 
 // Mesh-wide passive-monitoring dashboard (backend) — subscribes to
-// monitor.> on site A's hub only. Known limitation of this two-site demo
-// topology, not something this pass fixes: the two sites' NATS clusters
-// are completely separate (only the ServerHost<->ServerHost mesh peering
-// above bridges them, and only for event replication, not general
-// pub/sub), so site B's daemon/server telemetry never reaches a
-// subscriber connected to site A's hub. See docs/00-design-document.md
-// §4.5.
+// monitor.> on BOTH sites' hubs: the two sites' NATS clusters are
+// completely separate (only the ServerHost<->ServerHost mesh peering
+// bridges them, and only for event replication, not general pub/sub), so
+// covering the whole mesh means one subscription per site's hub, not one
+// shared connection. See MeshMonitorApiOptions.NatsUrls' doc comment.
 builder.AddProject<Projects.SyncMesh_MeshMonitor_Api>("mesh-monitor-api")
     .WithEnvironment(context =>
     {
-        var endpoint = natsHubA.GetEndpoint("client");
-        context.EnvironmentVariables["MeshMonitor__NatsUrl"] = ReferenceExpression.Create($"nats://{endpoint.Property(EndpointProperty.Host)}:{endpoint.Property(EndpointProperty.Port)}");
+        var endpointA = natsHubA.GetEndpoint("client");
+        context.EnvironmentVariables["MeshMonitor__NatsUrls__0"] = ReferenceExpression.Create($"nats://{endpointA.Property(EndpointProperty.IPV4Host)}:{endpointA.Property(EndpointProperty.Port)}");
+        var endpointB = natsHubB.GetEndpoint("client");
+        context.EnvironmentVariables["MeshMonitor__NatsUrls__1"] = ReferenceExpression.Create($"nats://{endpointB.Property(EndpointProperty.IPV4Host)}:{endpointB.Property(EndpointProperty.Port)}");
     })
-    .WaitFor(natsHubA);
+    .WaitFor(natsHubA)
+    .WaitFor(natsHubB);
 
 // Order book demo (SyncMesh.OrderBook.Api) — commands route through
 // either daemon's IPC pipe; the read model is built by polling ONLY site
@@ -139,8 +150,11 @@ builder.AddProject<Projects.SyncMesh_MeshMonitor_Api>("mesh-monitor-api")
 // concrete proof of mesh convergence this demo exists for — see
 // docs/06-data-model.md's Order Book Example Domain section.
 builder.AddProject<Projects.SyncMesh_OrderBook_Api>("orderbook-api")
-    .WithReference(eventStoreDbA)
-    .WaitFor(eventStoreDbA)
+    .WithEnvironment("ConnectionStrings__EventStore", $"Data Source={eventStoreAPath}")
+    // Wait for serverhost-a itself so its Database.MigrateAsync() has
+    // already created the schema in site-a-events.db before this
+    // read-only projector starts querying the same file.
+    .WaitFor(serverHostA)
     .WithEnvironment("OrderBook__Sites__0__SiteId", "site-a")
     .WithEnvironment("OrderBook__Sites__0__PipeName", "syncmesh-daemon-a")
     .WithEnvironment("OrderBook__Sites__1__SiteId", "site-b")

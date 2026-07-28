@@ -115,14 +115,36 @@ not just as designed.
 **Still open, unaffected by this amendment** (Follow-up items 3–4 from
 the original Consequences remain outstanding, not resolved by building
 the frontend):
-- No authentication on `/api/topology` or the SignalR hub.
-- No backend test project for `SyncMesh.MeshMonitor.Api` (the frontend
-  now has its own Vitest/Playwright coverage; the ASP.NET Core backend —
-  `TopologyStore`, `MonitorSubscriber` — still has none).
-- No BDD feature file exists for this.
-- Not yet visually confirmed live in a running Aspire dashboard in this
-  sandbox (a DCP/Postgres-dependent-resource quirk, not specific to this
-  resource — see `ARCHITECTURE.md`'s "known environment limitation" note).
+- No authentication on `/api/topology` or the SignalR hub — explicitly
+  deferred to `PRODUCTION-HARDENING.md`, not tracked here.
+
+**Resolved by a later pass (2026-07-27)**:
+- **Dual-hub telemetry gap fixed**: `MeshMonitorApiOptions.NatsUrl`
+  (single string) became `NatsUrls` (a list), and `MonitorSubscriber` now
+  runs one independent subscribe loop per configured URL (mirroring
+  `MeshForwarder`'s one-loop-per-peer shape), so this dashboard now
+  covers every site's hub in the two-site AppHost topology, not just
+  site A's. See `ARCHITECTURE.md` → "Mesh-wide monitoring dashboard and
+  deployment-model sandbox".
+- **Backend test project added**: `tests/SyncMesh.MeshMonitor.Tests`
+  (xUnit) — `TopologyStoreTests` (upsert/snapshot fold logic) and
+  `MonitorSubscriberParsingTests` (the `DaemonStatus`/`ServerStatus`
+  discriminated-union parsing, via `InternalsVisibleTo` on `ParseNode`).
+  9 tests, matching the Order Book demo's unit-tests-only precedent (see
+  below).
+- **No BDD feature file — resolved as a deliberate scope decision, not a
+  gap**: like the Order Book demo, this is developer tooling built
+  alongside the phases, not a phase deliverable with its own entry/exit
+  criteria in `docs/05-implementation-guide.md`. Unit tests covering the
+  fold/parsing logic are the right-sized coverage here; a full
+  Gherkin/Reqnroll suite would be scope creep for a dashboard whose
+  actual correctness guarantee (telemetry in, topology snapshot out) unit
+  tests already exercise directly.
+- **Visually/functionally confirmed live**: the two-site AppHost topology
+  now starts cleanly end to end (see ADR-0001's Amendment for why the
+  server tier runs on SQLite in this dev topology, which is what actually
+  unblocked this) and this dashboard's `/api/topology` reflects real
+  telemetry from both sites once running.
 
 ## Related
 

@@ -22,6 +22,7 @@
     <Project Path="tests/SyncMesh.Daemon.Tests/SyncMesh.Daemon.Tests.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.Postgres/SyncMesh.EventStore.Tests.Postgres.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.Sqlite/SyncMesh.EventStore.Tests.Sqlite.csproj" />
+    <Project Path="tests/SyncMesh.MeshMonitor.Tests/SyncMesh.MeshMonitor.Tests.csproj" />
     <Project Path="tests/SyncMesh.OrderBook.Tests/SyncMesh.OrderBook.Tests.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.SqlServer/SyncMesh.EventStore.Tests.SqlServer.csproj" />
     <Project Path="tests/SyncMesh.Sync.Tests/SyncMesh.Sync.Tests.csproj" />

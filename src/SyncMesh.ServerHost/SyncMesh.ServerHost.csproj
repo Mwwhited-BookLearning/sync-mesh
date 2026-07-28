@@ -18,6 +18,7 @@
     <ProjectReference Include="..\SyncMesh.EventStore\SyncMesh.EventStore.csproj" />
     <ProjectReference Include="..\SyncMesh.EventStore.Migrations.Postgres\SyncMesh.EventStore.Migrations.Postgres.csproj" />
     <ProjectReference Include="..\SyncMesh.EventStore.Migrations.SqlServer\SyncMesh.EventStore.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\SyncMesh.EventStore.Migrations.Sqlite\SyncMesh.EventStore.Migrations.Sqlite.csproj" />
     <ProjectReference Include="..\SyncMesh.ServiceDefaults\SyncMesh.ServiceDefaults.csproj" />
   </ItemGroup>
 

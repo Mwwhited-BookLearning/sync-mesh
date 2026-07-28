@@ -48,6 +48,35 @@ third-party event-sourcing framework for the storage layer.
 - Follow-up: define a snapshotting strategy once stream lengths are
   understood in practice (not needed for MVP).
 
+## Amendment (2026-07-27) — SQLite permitted at the server tier for the AppHost dev topology only
+
+`CLAUDE.md`'s tech-stack convention reserves SQLite for the daemon tier and
+PostgreSQL/SQL Server for the server tier, modeling a production-realistic
+server backend. `SyncMesh.ServerHost`'s `EventStore:Provider` switch now
+also accepts `"Sqlite"` — but this is scoped narrowly to
+`src/SyncMesh.AppHost`'s local two-site dev topology, not a general
+recommendation to use SQLite at the server tier.
+
+Why: running `ServerHost`'s Postgres tier through Aspire's containerized
+`AddPostgres` in this sandbox surfaced a compounding set of Aspire/DCP
+orchestration issues, none of them about this project's own event-sourcing
+model — a data-volume/password mismatch across `dotnet run`s (a known
+Aspire bug, microsoft/aspire#5399), a `WaitFor` deadlock on the database
+resource (Aspire's `AddDatabase` doesn't create the logical database
+itself; nothing does until the dependent it was blocking starts), and a
+dual-stack `"localhost"` NATS connection failure (Aspire's own
+`KnownHostNames.Localhost` docs describe exactly this ambiguity;
+`EndpointProperty.IPV4Host` fixed it). Each site's `ServerHost` is a single
+process in this topology, so SQLite's single-writer model isn't a real
+constraint here the way it would be for a genuinely concurrent server
+deployment.
+
+Postgres and SQL Server remain the intended, documented options for any
+actual server-tier deployment (on-prem/WAN/cloud, §4.3) — this amendment
+does not change that. See `ARCHITECTURE.md` → "AppHost dev topology: server
+tier runs on SQLite" for the mechanics, and `docs/adr/0005-mesh-monitor-dashboard.md`'s
+Amendment for the live-topology verification this unblocked.
+
 ## Related
 
 `docs/06-data-model.md`, `docs/00-design-document.md` §5

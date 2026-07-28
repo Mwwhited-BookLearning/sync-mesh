@@ -49,9 +49,9 @@ requiring the whole wireframe set to be redrawn.
 @endsalt
 ```
 
-- **Header/nav**: which hub this dashboard instance is connected to
-  (`MeshMonitorApiOptions.NatsUrl`), and whether the SignalR connection is
-  live.
+- **Header/nav**: which hub(s) this dashboard instance is connected to
+  (`MeshMonitorApiOptions.NatsUrls` — one per site in a multi-site mesh),
+  and whether the SignalR connection is live.
 - **Topology panel**: left region, the mesh-wide node/edge view — detailed
   in Layer 2.
 - **Node detail panel**: right region, populated once a node is selected in

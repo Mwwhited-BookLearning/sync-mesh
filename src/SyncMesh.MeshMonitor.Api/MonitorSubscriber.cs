@@ -21,9 +21,16 @@ public sealed class MonitorSubscriber(
 {
     private static readonly TimeSpan RestartDelay = TimeSpan.FromSeconds(2);
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    // One independent subscribe loop per configured NATS URL (mirroring
+    // MeshForwarder's one-loop-per-peer shape) — each site's hub is its
+    // own isolated NATS cluster, so covering the whole mesh means a
+    // separate connection per site, not one shared subscription.
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        Task.WhenAll(options.Value.NatsUrls.Select(url => SubscribeToAsync(url, stoppingToken)));
+
+    private async Task SubscribeToAsync(string natsUrl, CancellationToken stoppingToken)
     {
-        await using var connection = new NatsConnection(new NatsOpts { Url = options.Value.NatsUrl });
+        await using var connection = new NatsConnection(new NatsOpts { Url = natsUrl });
 
         // Same outer retry loop convention as EventForwarder/MeshForwarder
         // — a subscribe fault must not silently end monitoring for good.
@@ -46,19 +53,19 @@ public sealed class MonitorSubscriber(
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        logger.LogWarning(ex, "Failed to process a monitor message; skipping it.");
+                        logger.LogWarning(ex, "Failed to process a monitor message from {NatsUrl}; skipping it.", natsUrl);
                     }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogWarning(ex, "Monitor subscriber faulted; restarting in {Delay}.", RestartDelay);
+                logger.LogWarning(ex, "Monitor subscriber for {NatsUrl} faulted; restarting in {Delay}.", natsUrl, RestartDelay);
                 await Task.Delay(RestartDelay, stoppingToken);
             }
         }
     }
 
-    private static TopologyNode? ParseNode(byte[]? data)
+    internal static TopologyNode? ParseNode(byte[]? data)
     {
         if (data is null)
         {
