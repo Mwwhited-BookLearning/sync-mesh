@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SyncMesh.Contracts.Ipc;
 using SyncMesh.EventStore;
 
 namespace SyncMesh.Daemon.Ipc;

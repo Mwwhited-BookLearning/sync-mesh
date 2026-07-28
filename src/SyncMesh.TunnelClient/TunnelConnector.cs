@@ -24,17 +24,20 @@ public static class TunnelConnector
         TimeSpan directAttemptTimeout,
         CancellationToken ct)
     {
+        var direct = new TcpClient();
         try
         {
             using var directCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             directCts.CancelAfter(directAttemptTimeout);
-            var direct = new TcpClient();
             await direct.ConnectAsync(directHost, directPort, directCts.Token);
             return new TunnelConnectResult { Stream = direct.GetStream(), UsedRelay = false };
         }
         catch (Exception ex) when (ex is SocketException or OperationCanceledException)
         {
-            // Direct connection unreachable or blocked — fall back to relay.
+            // Direct connection unreachable or blocked — fall back to
+            // relay. Dispose here: a failed ConnectAsync otherwise leaks
+            // the socket, since nothing else ever gets a reference to it.
+            direct.Dispose();
         }
 
         var relay = new TcpClient();

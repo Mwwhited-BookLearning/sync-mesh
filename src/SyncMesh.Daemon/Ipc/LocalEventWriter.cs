@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NATS.Client.JetStream;
 using SyncMesh.Contracts;
+using SyncMesh.Contracts.Ipc;
 using SyncMesh.Daemon.Nats;
 using SyncMesh.EventStore;
 

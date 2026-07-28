@@ -84,11 +84,17 @@ tradeoff explicitly to the human first.
   genuinely can't be externally isolated — e.g. the app's own correctness
   guarantees (idempotent apply, replay ordering) depend on it.
 - **This project is a PoC/teaching example of meshed event sourcing —
-  not a path to a real production deployment.** (Not CQRS: there is no
-  separate, denormalized read model built from the sourced events — the
-  daemon's read path queries the same append-only event table the write
-  path inserts into. Don't describe this project as CQRS elsewhere unless
-  that changes.) Ops/compliance
+  not a path to a real production deployment.** (The core sync path
+  itself is not CQRS: `SyncMesh.Daemon`/`SyncMesh.ServerHost`'s own read
+  path — `SyncMesh.Daemon.Ipc.LocalEventReader` — queries the same
+  append-only event table the write path inserts into, no separate
+  denormalized read model. Don't describe the *core* mesh architecture as
+  CQRS. The one deliberate exception is `SyncMesh.OrderBook.Api`, a
+  separate illustrative example domain layered on the same event store
+  specifically to demonstrate a genuine CQRS read model — see
+  `ARCHITECTURE.md` → "Order Book demo" and `docs/06-data-model.md` §8.
+  That example doesn't change the core architecture's own answer above.)
+  Ops/compliance
   sign-off questions, TLS/service-credential wiring, the tunnel security
   review, retention compliance sign-off, and real-scale topology
   decisions are all consolidated in one place —

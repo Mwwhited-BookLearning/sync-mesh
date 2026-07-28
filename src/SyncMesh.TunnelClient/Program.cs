@@ -53,8 +53,11 @@ static async Task HandleConnectionAsync(TcpClient local, CliOptions options, Can
                 options.SiteId, options.InstanceId,
                 options.DirectAttemptTimeout, ct);
 
-            Console.WriteLine($"Connected via {(result.UsedRelay ? "relay" : "direct")} path.");
-            await TunnelFraming.SpliceAsync(local.GetStream(), result.Stream, ct);
+            await using (result.Stream)
+            {
+                Console.WriteLine($"Connected via {(result.UsedRelay ? "relay" : "direct")} path.");
+                await TunnelFraming.SpliceAsync(local.GetStream(), result.Stream, ct);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -114,6 +117,17 @@ internal sealed class CliOptions
     private static (string Host, int Port) ParseEndpoint(string endpoint)
     {
         var separatorIndex = endpoint.LastIndexOf(':');
-        return (endpoint[..separatorIndex], int.Parse(endpoint[(separatorIndex + 1)..]));
+        if (separatorIndex <= 0 || separatorIndex == endpoint.Length - 1)
+        {
+            throw new FormatException($"'{endpoint}' is not a valid host:port endpoint.");
+        }
+
+        var host = endpoint[..separatorIndex];
+        if (!int.TryParse(endpoint[(separatorIndex + 1)..], out var port) || port is < 1 or > 65535)
+        {
+            throw new FormatException($"'{endpoint}' does not have a valid port number.");
+        }
+
+        return (host, port);
     }
 }

@@ -1,3 +1,4 @@
+using SyncMesh.Contracts.Ipc;
 using SyncMesh.Daemon.Ipc;
 
 namespace SyncMesh.Daemon.Tests;

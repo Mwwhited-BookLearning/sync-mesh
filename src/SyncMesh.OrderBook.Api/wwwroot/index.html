@@ -100,17 +100,35 @@ async function cancelOrder(orderId, siteId) {
 }
 
 function renderRows(tbodyId, orders) {
+  // Built via createElement/textContent, not innerHTML template strings —
+  // traderId is arbitrary client-submitted text (PlaceOrderRequest.TraderId
+  // has no server-side validation) and originSiteId/orderId would also
+  // break out of the old inline onclick="..." attribute string. Both are
+  // real stored-XSS vectors for a value another viewer's browser renders.
   const tbody = document.getElementById(tbodyId);
-  tbody.innerHTML = orders.map(o => `
-    <tr>
-      <td>${o.price.toFixed(2)}</td>
-      <td>${o.quantity}</td>
-      <td class="left">${o.traderId}</td>
-      <td>${o.originSiteId}</td>
-      <td>${new Date(o.placedAtUtc).toLocaleTimeString()}</td>
-      <td><button onclick="cancelOrder('${o.orderId}', '${o.originSiteId}')">Cancel</button></td>
-    </tr>
-  `).join('');
+  tbody.replaceChildren(...orders.map(o => {
+    const tr = document.createElement('tr');
+    const cell = (text, className) => {
+      const td = document.createElement('td');
+      td.textContent = text;
+      if (className) td.className = className;
+      return td;
+    };
+    tr.append(
+      cell(o.price.toFixed(2)),
+      cell(String(o.quantity)),
+      cell(o.traderId, 'left'),
+      cell(o.originSiteId),
+      cell(new Date(o.placedAtUtc).toLocaleTimeString()),
+    );
+    const actionTd = document.createElement('td');
+    const button = document.createElement('button');
+    button.textContent = 'Cancel';
+    button.addEventListener('click', () => cancelOrder(o.orderId, o.originSiteId));
+    actionTd.append(button);
+    tr.append(actionTd);
+    return tr;
+  }));
 }
 
 async function refresh() {

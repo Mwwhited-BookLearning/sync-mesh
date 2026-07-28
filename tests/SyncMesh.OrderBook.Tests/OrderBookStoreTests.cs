@@ -91,6 +91,24 @@ public sealed class OrderBookStoreTests
     }
 
     [Fact]
+    public void Cancel_ArrivingBeforePlace_TombstonesTheOrder_SoALaterPlaceCannotResurrectIt()
+    {
+        // Out-of-order delivery (CLAUDE.md rule 4) means Cancel can arrive
+        // before its own Place. Before the 2026-07-28 fix, Cancel against
+        // an order that isn't there yet was a silent no-op, and the later
+        // Place would then permanently resurrect a cancelled order.
+        var store = new OrderBookStore();
+        var order = MakeOrder();
+
+        store.Cancel(order.OrderId);
+        store.Place(order);
+
+        var book = store.Snapshot(order.Symbol);
+        Assert.Empty(book.Bids);
+        Assert.Empty(book.Asks);
+    }
+
+    [Fact]
     public void OrdersFromDifferentSites_ConvergeIntoOneBook()
     {
         // The whole point of this read model: orders that originated at

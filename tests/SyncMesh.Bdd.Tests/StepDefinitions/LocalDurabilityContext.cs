@@ -9,6 +9,7 @@ using NATS.Client.JetStream;
 using NATS.Client.JetStream.Models;
 using SyncMesh.Contracts;
 using SyncMesh.Daemon;
+using SyncMesh.Contracts.Ipc;
 using SyncMesh.Daemon.Ipc;
 using SyncMesh.Daemon.Nats;
 using SyncMesh.EventStore;

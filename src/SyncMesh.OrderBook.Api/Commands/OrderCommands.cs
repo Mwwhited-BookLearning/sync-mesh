@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using SyncMesh.Contracts.Ipc;
 using SyncMesh.Contracts.OrderBook;
-using SyncMesh.Daemon.Ipc;
 
 namespace SyncMesh.OrderBook.Api.Commands;
 
@@ -10,7 +10,7 @@ public sealed record PlaceOrderResponse(Guid OrderId);
 public sealed record CancelOrderRequest(string SiteId);
 
 // The command side: this API plays the role of "the local app" (see
-// SyncMesh.Daemon.Ipc.LocalIpcClient's own doc comment — "stands in for
+// SyncMesh.Contracts.Ipc.LocalIpcClient's own doc comment — "stands in for
 // the local app until a real one exists"), routing each command through
 // the named daemon's IPC pipe for the requested SiteId. This exercises
 // the real Local App -> Daemon -> Server -> Mesh path, not a shortcut.

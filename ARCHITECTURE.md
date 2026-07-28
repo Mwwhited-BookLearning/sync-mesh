@@ -189,6 +189,22 @@ design. Conventions specific to `SyncMesh.Daemon.Tunnel`/
   just `CopyToAsync` raw bytes to `LocalTargetEndpoint`. This is what
   keeps the mechanism protocol-agnostic (works identically for RDP/VNC/
   raw TCP/anything else per design doc §4.5).
+- **`SpliceAsync` forwards each direction's EOF as a real half-close on
+  the *other* leg, not just `WhenAll` on both copies.** A protocol that
+  legitimately half-closes one direction first (plain HTTP: send the
+  request, shutdown-send, then read the response) needs its own EOF
+  actually propagated as a TCP FIN on the connection to the other side —
+  otherwise that side just blocks forever waiting for more input.
+  `SpliceAsync` therefore takes `NetworkStream` (not `Stream`) so each
+  copy direction can call `destination.Socket.Shutdown(SocketShutdown
+  .Send)` once its own source hits EOF, then waits on `Task.WhenAll` for
+  both directions to fully drain before either stream is disposed. The
+  original `Task.WhenAny` + immediate dispose of both streams silently
+  truncated whichever direction was still mid-copy — the existing
+  echo-server-based isolation tests couldn't catch this because an echo
+  target never half-closes; the regression coverage
+  (`SyncMesh.Sync.Tests.TunnelFramingSpliceTests`) uses a target that
+  only responds after seeing a genuine half-close.
 - **One active session per daemon, gated on both sides.** A
   `SemaphoreSlim(1,1)` on the agent (covers both the direct listener and
   data-channel requests) and a per-agent semaphore on the relay (checked
@@ -208,8 +224,12 @@ design. Conventions specific to `SyncMesh.Daemon.Tunnel`/
   pattern as `MonitorPublisher`) — despite the "control" name, no real
   session-establishment signaling ever rides on NATS; that all lives
   inside the plain-TCP mechanism.
-- **Zero reference to `NatsConnection`/`NatsJSContext` anywhere in either
-  `Tunnel/` folder, and vice versa in `Nats/`.** This is what makes the
+- **Zero reference to `NatsConnection`/`NatsJSContext` on the tunnel
+  *data path*, and vice versa in `Nats/`.** (Not literally zero anywhere
+  in `Tunnel/`: `TunnelStatusPublisher` injects a plain `NatsConnection`
+  for its own one-way telemetry publish, per the point above — that's the
+  one intentional exception, and it's still true no NATS type appears
+  anywhere on the actual splice/data-channel path.) This is what makes the
   tunnel's failure domain independent of event-sync *architecturally*, not
   just by assertion — proven directly by
   `SyncMesh.Sync.Tests.TunnelFailureIsolationTests`, which kills each

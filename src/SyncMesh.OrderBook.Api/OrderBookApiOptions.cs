@@ -21,6 +21,17 @@ public sealed class OrderBookApiOptions
     // How often OrderBookProjector polls the (read-only) event store for
     // newly applied OrderPlaced/OrderCancelled events.
     public TimeSpan ProjectionPollInterval { get; set; } = TimeSpan.FromSeconds(1);
+
+    // How far behind the current high-water mark the projector re-scans on
+    // every poll. A replicated event's HLC reflects when it was appended
+    // at its ORIGIN site, not when it lands in this server's database, so
+    // a later-arriving event can carry an earlier HLC than one already
+    // applied — this window is what lets the projector still pick it up
+    // instead of skipping it forever (see OrderBookProjector). Must be
+    // comfortably larger than realistic mesh replication delay; both Place
+    // and Cancel are idempotent, so reapplying an event already inside a
+    // prior window is always safe.
+    public TimeSpan ProjectionLookbackWindow { get; set; } = TimeSpan.FromMinutes(5);
 }
 
 public sealed class SiteConnection

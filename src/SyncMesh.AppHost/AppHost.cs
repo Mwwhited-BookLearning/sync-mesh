@@ -107,6 +107,13 @@ builder.AddProject<Projects.SyncMesh_Daemon>("daemon-a")
     .WithEnvironment("Daemon__SiteId", "site-a")
     .WithEnvironment("Daemon__InstanceId", "daemon-a")
     .WithEnvironment("Daemon__IpcPipeName", "syncmesh-daemon-a")
+    // Both demo order generators default OFF in SyncMesh.Daemon itself
+    // (see SyntheticOrderGeneratorOptions/MarketDataOptions) — this demo
+    // topology explicitly opts daemon-a in so the mesh is still visibly
+    // alive without any manual steps, without making that the default for
+    // every daemon everywhere.
+    .WithEnvironment("Daemon__SyntheticOrderGenerator__Enabled", "true")
+    .WithEnvironment("Daemon__MarketDataGenerator__Enabled", "true")
     .WithEnvironment(context =>
     {
         var endpoint = natsLeafA.GetEndpoint("client");

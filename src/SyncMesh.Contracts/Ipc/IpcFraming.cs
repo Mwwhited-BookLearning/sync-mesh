@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace SyncMesh.Daemon.Ipc;
+namespace SyncMesh.Contracts.Ipc;
 
 // Simple length-prefixed message framing shared by the IPC server and
 // client: a 4-byte little-endian length, followed by that many UTF-8 bytes.

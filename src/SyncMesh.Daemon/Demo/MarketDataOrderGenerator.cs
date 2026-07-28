@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Options;
+using SyncMesh.Contracts.Ipc;
 using SyncMesh.Contracts.OrderBook;
 using SyncMesh.Daemon.Ipc;
 

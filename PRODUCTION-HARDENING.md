@@ -2,11 +2,16 @@
 
 This repo is a **PoC/teaching example of meshed event sourcing** (HLC
 ordering, idempotent apply, NATS leaf/gateway mesh, a direct-first/
-relay-fallback tunnel) — not a path to a real production deployment. It
-is not a CQRS example: there is no separate, denormalized read model
-built from the sourced events (the daemon's read path queries the same
-append-only event table the write path inserts into) — only describe
-this project as CQRS if that changes.
+relay-fallback tunnel) — not a path to a real production deployment. The
+core mesh sync path is not itself a CQRS example: there is no separate,
+denormalized read model built from the sourced events (the daemon's read
+path queries the same append-only event table the write path inserts
+into) — only describe the *core* architecture as CQRS if that changes.
+`SyncMesh.OrderBook.Api` is a deliberate, separate exception — a worked
+example domain built on the same event store specifically to demonstrate
+a genuine CQRS read model (see `ARCHITECTURE.md` → "Order Book demo" and
+`docs/06-data-model.md` §8) — it doesn't change the answer for the core
+architecture above.
 Nothing in this file is expected to actually be built here; it exists so
 every phase write-up and every ADR can point to **one place** for "what a
 real deployment would still need," instead of each repeating its own

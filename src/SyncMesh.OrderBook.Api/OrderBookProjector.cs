@@ -20,8 +20,19 @@ public sealed class OrderBookProjector(
     IOptions<OrderBookApiOptions> options,
     ILogger<OrderBookProjector> logger) : BackgroundService
 {
-    private long _lastHlcPhysicalTicks;
-    private int _lastHlcLogicalCounter;
+    // Not a strict high-water mark on HLC: origin HLC reflects when an
+    // event was appended at its ORIGIN site, not when it lands in *this*
+    // server's database, so a later-arriving replicated event can have an
+    // earlier HLC than one already applied. Querying only ">" a single
+    // HLC cursor would then skip that event forever. Instead this tracks
+    // the latest RecordedAtUtc seen and re-scans a trailing
+    // ProjectionLookbackWindow on every poll; _appliedWithinWindow avoids
+    // reapplying the same event redundantly (not required for
+    // correctness — Place/Cancel are both idempotent — just avoids
+    // wasted work) and is pruned back to the window's contents each poll
+    // so it can't grow unboundedly.
+    private DateTimeOffset _highWaterMarkUtc = DateTimeOffset.MinValue;
+    private readonly HashSet<Guid> _appliedWithinWindow = [];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -42,27 +53,46 @@ public sealed class OrderBookProjector(
         while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private async Task PollOnceAsync(CancellationToken ct)
+    internal async Task PollOnceAsync(CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EventStoreDbContext>();
 
-        var lastTicks = _lastHlcPhysicalTicks;
-        var lastCounter = _lastHlcLogicalCounter;
+        var lookback = options.Value.ProjectionLookbackWindow;
+        var since = _highWaterMarkUtc - DateTimeOffset.MinValue > lookback
+            ? _highWaterMarkUtc - lookback
+            : DateTimeOffset.MinValue;
 
-        var newEvents = await db.Events
+        // The RecordedAtUtc >= since / OrderBy(RecordedAtUtc) window
+        // filtering happens client-side, not in the query itself: EF
+        // Core's SQLite provider (this demo's server-tier provider — see
+        // Program.cs) cannot translate anything but equality comparisons
+        // on DateTimeOffset (a documented provider limitation, not a bug
+        // here) and throws rather than producing wrong results. The
+        // EventType filter still runs server-side; Order* events are a
+        // small enough set for a teaching-scale demo that pulling them
+        // into memory for the window filter is a reasonable tradeoff.
+        var candidates = (await db.Events
             .Where(e => e.EventType == OrderBookEventTypes.OrderPlaced || e.EventType == OrderBookEventTypes.OrderCancelled)
-            .Where(e => e.HlcPhysicalTicks > lastTicks ||
-                        (e.HlcPhysicalTicks == lastTicks && e.HlcLogicalCounter > lastCounter))
-            .OrderBy(e => e.HlcPhysicalTicks).ThenBy(e => e.HlcLogicalCounter)
-            .ToListAsync(ct);
+            .ToListAsync(ct))
+            .Where(e => e.RecordedAtUtc >= since)
+            .OrderBy(e => e.RecordedAtUtc)
+            .ToList();
 
-        foreach (var record in newEvents)
+        foreach (var record in candidates)
         {
-            Apply(record);
-            _lastHlcPhysicalTicks = record.HlcPhysicalTicks;
-            _lastHlcLogicalCounter = record.HlcLogicalCounter;
+            if (_appliedWithinWindow.Add(record.GlobalEventId))
+            {
+                Apply(record);
+            }
+
+            if (record.RecordedAtUtc > _highWaterMarkUtc)
+            {
+                _highWaterMarkUtc = record.RecordedAtUtc;
+            }
         }
+
+        _appliedWithinWindow.IntersectWith(candidates.Select(e => e.GlobalEventId));
     }
 
     private void Apply(EventRecord record)

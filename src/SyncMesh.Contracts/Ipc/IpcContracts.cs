@@ -1,4 +1,4 @@
-namespace SyncMesh.Daemon.Ipc;
+namespace SyncMesh.Contracts.Ipc;
 
 // Tier 0 (Local App <-> Local Daemon) wire contracts. Deliberately separate
 // from SyncMesh.Contracts.EventEnvelope, which is the cross-tier envelope

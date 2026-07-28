@@ -159,6 +159,31 @@ together):
 `docs/bdd/design/mesh-monitor-ticket-auth.md`. Wireframe for the new
 Connect screen: `docs/ui-wireframes.md` → "Layer 0."
 
+## Amendment (2026-07-28) — negotiate 401 fixed: handler must accept `Bearer <hash>` too
+
+The frontend wiring above shipped with a bug that broke every connection
+attempt: `@microsoft/signalr`'s `AccessTokenHttpClient` sends
+`Authorization: Bearer <accessTokenFactory-value>` on **every** HTTP
+request it issues through the connection — including `POST /negotiate`,
+which happens before any WebSocket exists and therefore before the
+`?access_token=` query-string path (used only by `WebSocketTransport`
+for the actual WS upgrade) is even reachable. This is hardcoded in the
+client (`AccessTokenHttpClient._setAuthorizationHeader`, not
+configurable), not something this project's client-side code chose.
+`TicketAuthenticationHandler` only recognized an `Authorization: Ticket
+<hash>` header, so `/negotiate` 401'd on the very first request of every
+connection attempt — the ticket exchange itself worked, but the
+connection it was meant to protect never actually completed.
+
+Fixed by accepting `Bearer <hash>` as an equally valid header form for
+ticket redemption, alongside the existing `Ticket <hash>` header and the
+`access_token`/`ticket` query parameters. This doesn't create ambiguity
+with real JWT bearer tokens: `ITicketStore.TryRedeem` simply fails for
+any value that isn't a currently-outstanding ticket hash, so a real JWT
+sent as `Bearer <jwt>` falls through this scheme's `NoResult`/`Fail` and
+is still evaluated by the `JwtBearer` scheme in the same
+`AddAuthenticationSchemes(AuthSchemeNames.BearerOrTicket)` policy.
+
 ## Related
 
 `docs/adr/0005-mesh-monitor-dashboard.md` (the dashboard this protects),

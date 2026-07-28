@@ -111,8 +111,25 @@ public sealed class TunnelRelay(
             while (!ct.IsCancellationRequested)
             {
                 // Heartbeat frames only expected here; reading is what
-                // detects the connection closing/faulting.
-                await TunnelFraming.ReadFrameAsync(stream, ct);
+                // detects the connection closing/faulting. A per-read
+                // timeout is what actually enforces HeartbeatTimeout — a
+                // half-open connection (no FIN ever received, just no
+                // more heartbeats) would otherwise stay registered
+                // indefinitely, since a plain ReadFrameAsync(stream, ct)
+                // with no timeout just blocks forever.
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(options.Value.HeartbeatTimeout);
+                try
+                {
+                    await TunnelFraming.ReadFrameAsync(stream, timeoutCts.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    logger.LogWarning(
+                        "Tunnel agent {Key} control connection timed out waiting for a heartbeat after {Timeout}; evicting.",
+                        key, options.Value.HeartbeatTimeout);
+                    break;
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -192,9 +209,43 @@ public sealed class TunnelRelay(
 
                     using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     timeoutCts.CancelAfter(opts.SessionWaitTimeout);
-                    await using var dataChannelStream = await pending.Task.WaitAsync(timeoutCts.Token);
+                    NetworkStream dataChannelStream;
+                    try
+                    {
+                        dataChannelStream = await pending.Task.WaitAsync(timeoutCts.Token);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        // Clear PendingDataChannel only if it's still
+                        // ours — a later session may already have
+                        // replaced it after this one gave up and released
+                        // SessionLock.
+                        Interlocked.CompareExchange(ref entry.PendingDataChannel, null, pending);
 
-                    await TunnelFraming.SpliceAsync(clientStream, dataChannelStream, ct);
+                        // The agent's data channel may still connect after
+                        // we've given up (a slow agent, or one that raced
+                        // in right as SessionWaitTimeout expired). Nobody
+                        // will ever await pending.Task again, so dispose
+                        // whatever eventually lands in it instead of
+                        // leaking the socket — this fires whether
+                        // pending.Task completes before or after this
+                        // continuation is attached.
+                        _ = pending.Task.ContinueWith(
+                            static t => t.Result.Dispose(),
+                            CancellationToken.None,
+                            TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously,
+                            TaskScheduler.Default);
+
+                        logger.LogWarning(
+                            "Tunnel agent {Key} did not open a data channel within {Timeout}; giving up.",
+                            key, opts.SessionWaitTimeout);
+                        return;
+                    }
+
+                    await using (dataChannelStream)
+                    {
+                        await TunnelFraming.SpliceAsync(clientStream, dataChannelStream, ct);
+                    }
                 }
                 finally
                 {

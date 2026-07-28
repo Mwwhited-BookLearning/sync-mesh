@@ -77,6 +77,78 @@ sandbox" and `UI-ARCHITECTURE.md` (frontend-specific).
       real server, real Postgres row. How-to in
       `docs/10-running-deployment-models.md`.
 
+## Review remediation (2026-07-28, branch `fix/review-findings-2026-07-28`)
+
+A full review of everything committed between 2026-07-23 and 2026-07-28
+(Phase 5 tunnel, ticket-based SignalR auth, the Order Book demo,
+deployment-model tooling) surfaced 1 CRITICAL, 4 HIGH, 5 MEDIUM, and
+several LOW/NIT findings. All were fixed on this branch, each verified by
+a full solution build + targeted test run (new regression tests added
+where the bug was concrete enough to reproduce deterministically):
+
+- **CRITICAL — SignalR ticket auth never actually connected.**
+  `@microsoft/signalr`'s `accessTokenFactory` always sends
+  `Authorization: Bearer <value>` on the `/negotiate` HTTP request
+  (confirmed directly in the installed package source), which
+  `TicketAuthenticationHandler` didn't accept — every dashboard
+  connection 401'd on negotiate. Fixed to accept `Bearer <hash>` as well
+  as `Ticket <hash>`; see [ADR-0009](docs/adr/0009-ticket-based-signalr-auth.md)'s
+  2026-07-28 amendment. `TicketAuthenticationHandlerTests` (new, 7 tests).
+- **HIGH — `OrderBookProjector` permanently dropped late-arriving
+  replicated events** whose origin HLC was lower than one already
+  applied (origin HLC ≠ local arrival order). Replaced the strict HLC
+  watermark with a trailing `RecordedAtUtc` lookback window (relying on
+  `Place`/`Cancel`'s existing idempotency for safe reapplication).
+  `OrderBookProjectorTests` (new, 3 tests) reproduce the exact scenario.
+- **HIGH — `OrderBookStore` could resurrect a cancelled order** if
+  `Cancel` arrived before its own `Place` (a legitimate out-of-order
+  delivery per CLAUDE.md rule 4). Fixed with a permanent cancelled-id
+  tombstone set.
+- **HIGH — CLAUDE.md/PRODUCTION-HARDENING.md's "not CQRS" wording
+  contradicted ARCHITECTURE.md/WORKPLAN.md/the data model**, which all
+  correctly call the Order Book demo a genuine CQRS read model. Reworded
+  both to scope the negation to the *core* sync path specifically.
+- **HIGH — `TunnelFraming.SpliceAsync` truncated half-closed
+  connections.** `Task.WhenAny` + immediate dispose of both streams lost
+  whichever direction was still mid-copy the instant either side hit
+  EOF — silently breaks any protocol that legitimately half-closes one
+  direction first (e.g. plain HTTP). Fixed to forward each direction's
+  EOF as a real `Socket.Shutdown(Send)` on the other leg, then
+  `Task.WhenAll`. `TunnelFramingSpliceTests` (new) reproduces the
+  truncation against the old code and passes against the fix.
+- **MEDIUM** — `MeshMonitor.Api`'s inline `GetSection(...).Get<T>()` auth
+  read replaced with proper `IOptions<T>` wiring; `Issuer is not null`
+  (always true against the empty-string default) replaced with
+  `!string.IsNullOrEmpty(...)`. `TunnelRelayOptions.HeartbeatTimeout` was
+  declared but never enforced (a half-open agent connection stayed
+  registered forever) — now enforced via a per-read timeout; a timed-out
+  client session could also leak the agent's eventual data-channel
+  socket — now disposed via a completion continuation. Both demo order
+  generators (`SyntheticOrderGenerator`, `MarketDataOrderGenerator` —
+  the latter calling a live third-party API) defaulted `Enabled = true`
+  in the reusable `SyncMesh.Daemon` component itself; flipped to `false`
+  by default, with `SyncMesh.AppHost` explicitly opting daemon-a in so
+  the demo topology is still visibly alive out of the box.
+  `SyncMesh.OrderBook.Api` referenced the entire `SyncMesh.Daemon`
+  project (NATS/tunnel/EF) just to reach `LocalIpcClient` — that client
+  (plus its wire contracts/framing) moved to `SyncMesh.Contracts.Ipc`.
+- **LOW/NIT** — stored-XSS in the Order Book demo's plain-HTML page
+  (`innerHTML` with unescaped `traderId`/`originSiteId`/`orderId`), a
+  false "zero NatsConnection reference" claim in ARCHITECTURE.md
+  (`TunnelStatusPublisher` is the one intentional exception, for
+  telemetry only), an unbounded/negative tunnel frame-length allocation,
+  a couple of socket-leak edges in `TunnelConnector`/`TunnelClient`/
+  `TunnelAgent`, and a BDD assertion that depended on OS-specific closed-
+  port RST timing instead of asserting behavior.
+
+Not addressed on this branch (documented gaps, not silent claims): the
+`TunnelRelay` heartbeat-timeout/leak fixes have no new dedicated
+regression test (existing tunnel suites stayed green, but the exact
+half-open/late-data-channel scenarios aren't independently reproduced);
+`TunnelFrameType.Busy` remains reserved-but-unused rather than wired up
+end-to-end (would need both `TunnelAgent` and `TunnelRelay` changes for
+a NIT-level finding).
+
 ## Phase 0 — Project Setup
 
 **Related docs**: [Data model](docs/06-data-model.md) (`EventStoreDbContext` shape), [ADR-0001](docs/adr/0001-event-store-on-ef-core.md) (EF Core on SQLite/PostgreSQL/SQL Server)

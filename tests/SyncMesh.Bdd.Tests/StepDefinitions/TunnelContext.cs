@@ -245,7 +245,7 @@ public sealed class TunnelContext : IAsyncDisposable
     {
         using var scope = _daemonProvider!.CreateScope();
         var writer = scope.ServiceProvider.GetRequiredService<SyncMesh.Daemon.Ipc.LocalEventWriter>();
-        var response = await writer.AppendAsync(new SyncMesh.Daemon.Ipc.AppendEventRequest
+        var response = await writer.AppendAsync(new SyncMesh.Contracts.Ipc.AppendEventRequest
         {
             StreamId = Guid.NewGuid(),
             EventType = "BddTunnelScenario",

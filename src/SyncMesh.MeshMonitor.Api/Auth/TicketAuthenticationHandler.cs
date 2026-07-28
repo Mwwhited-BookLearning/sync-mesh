@@ -38,34 +38,59 @@ public sealed class TicketAuthenticationHandler(
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName)));
     }
 
-    private string? ExtractHashedTicket()
+    private string? ExtractHashedTicket() =>
+        ExtractHashedTicket(Request.Query["access_token"].FirstOrDefault() ?? Request.Query["ticket"].FirstOrDefault(),
+            Request.Headers.Authorization.FirstOrDefault());
+
+    // Query string first — the whole reason this scheme exists: a
+    // browser's WebSocket handshake (SignalR) can't set a custom
+    // Authorization header at all, only a URL. Two accepted param names:
+    // "access_token" is what @microsoft/signalr's own accessTokenFactory
+    // option sends automatically before every (re)connection attempt (not
+    // configurable client-side, hence reusing it here rather than
+    // inventing a third mechanism just to rename a query parameter) —
+    // despite the name, the *value* is still this handler's hashed
+    // ticket, never the real bearer token. "ticket" is accepted too, for
+    // any non-SignalR caller that would rather use the more descriptive
+    // name.
+    //
+    // Header form accepts BOTH "Ticket <hash>" (the documented form for a
+    // non-SignalR caller that can set headers but wants to avoid even
+    // this short-lived value in a URL) and "Bearer <hash>" — the latter
+    // is not optional: @microsoft/signalr's AccessTokenHttpClient sends
+    // `Authorization: Bearer <accessTokenFactory-value>` on every HTTP
+    // request it makes through the connection, including the /negotiate
+    // request, before a WebSocket even exists to put the value in a URL
+    // (confirmed directly in node_modules/@microsoft/signalr/dist/esm/
+    // AccessTokenHttpClient.js — _setAuthorizationHeader always uses
+    // "Bearer", never configurable). Without accepting "Bearer" here,
+    // /negotiate 401s on every connection attempt and the hub can never
+    // connect — the ticket's hash value never actually collides with a
+    // real JWT (TryRedeem just fails and this scheme no-results, letting
+    // the JwtBearer scheme in the same policy evaluate it as a JWT
+    // instead), so accepting both prefixes is safe.
+    internal static string? ExtractHashedTicket(string? fromQuery, string? authorizationHeader)
     {
-        // Query string first — the whole reason this scheme exists: a
-        // browser's WebSocket handshake (SignalR) can't set a custom
-        // Authorization header at all, only a URL. Two accepted param
-        // names: "access_token" is what @microsoft/signalr's own
-        // accessTokenFactory option sends automatically before every
-        // (re)connection attempt (not configurable client-side, hence
-        // reusing it here rather than inventing a third mechanism just to
-        // rename a query parameter) — despite the name, the *value* is
-        // still this handler's hashed ticket, never the real bearer
-        // token. "ticket" is accepted too, for any non-SignalR caller
-        // that would rather use the more descriptive name.
-        var fromQuery = Request.Query["access_token"].FirstOrDefault()
-            ?? Request.Query["ticket"].FirstOrDefault();
         if (!string.IsNullOrEmpty(fromQuery))
         {
             return fromQuery;
         }
 
-        // Authorization header form, for parity — "in place of a bearer
-        // token for any request" — a non-browser caller that can set
-        // headers has no reason to put even this short-lived value in a
-        // URL if it doesn't have to.
-        var header = Request.Headers.Authorization.FirstOrDefault();
-        var prefix = $"{SchemeName} ";
-        return header is not null && header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-            ? header[prefix.Length..]
-            : null;
+        if (authorizationHeader is null)
+        {
+            return null;
+        }
+
+        foreach (var prefix in TicketHeaderPrefixes)
+        {
+            if (authorizationHeader.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return authorizationHeader[prefix.Length..];
+            }
+        }
+
+        return null;
     }
+
+    private static readonly string[] TicketHeaderPrefixes = [$"{SchemeName} ", "Bearer "];
 }

@@ -100,6 +100,7 @@ public sealed class TunnelAgent(
         while (!ct.IsCancellationRequested)
         {
             using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            Task? heartbeatTask = null;
             try
             {
                 using var control = new TcpClient();
@@ -111,7 +112,7 @@ public sealed class TunnelAgent(
                     stream, TunnelFrameType.Hello,
                     TunnelFraming.EncodeIdentity(daemonOptions.Value.SiteId, daemonOptions.Value.InstanceId), ct);
 
-                var heartbeatTask = SendHeartbeatsAsync(stream, opts.HeartbeatInterval, heartbeatCts.Token);
+                heartbeatTask = SendHeartbeatsAsync(stream, opts.HeartbeatInterval, heartbeatCts.Token);
 
                 while (!ct.IsCancellationRequested)
                 {
@@ -121,9 +122,6 @@ public sealed class TunnelAgent(
                         _ = HandleDataChannelRequestAsync(opts, relayHost, relayPort, ct);
                     }
                 }
-
-                heartbeatCts.Cancel();
-                await heartbeatTask;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -133,6 +131,28 @@ public sealed class TunnelAgent(
             {
                 _connectedToRelay = false;
                 heartbeatCts.Cancel();
+
+                // Always observed, on every exit path — not just the
+                // clean-loop-exit path. Previously only awaited after the
+                // inner read loop, so a faulted ReadFrameAsync (the common
+                // case: that's exactly what detects the connection
+                // dropping) skipped straight to the catch block above and
+                // left this task's eventual ObjectDisposedException (from
+                // writing to `stream` after `control` is disposed)
+                // unobserved. SendHeartbeatsAsync already swallows
+                // OperationCanceledException/IOException internally, so
+                // this is just making sure the task is always awaited,
+                // not attaching new handling.
+                if (heartbeatTask is not null)
+                {
+                    try
+                    {
+                        await heartbeatTask;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                    }
+                }
             }
 
             if (!ct.IsCancellationRequested)
@@ -204,8 +224,17 @@ public sealed class TunnelAgent(
     private static (string Host, int Port) ParseEndpoint(string endpoint)
     {
         var separatorIndex = endpoint.LastIndexOf(':');
+        if (separatorIndex <= 0 || separatorIndex == endpoint.Length - 1)
+        {
+            throw new FormatException($"'{endpoint}' is not a valid host:port endpoint.");
+        }
+
         var host = endpoint[..separatorIndex];
-        var port = int.Parse(endpoint[(separatorIndex + 1)..]);
+        if (!int.TryParse(endpoint[(separatorIndex + 1)..], out var port) || port is < 1 or > 65535)
+        {
+            throw new FormatException($"'{endpoint}' does not have a valid port number.");
+        }
+
         return (host, port);
     }
 }

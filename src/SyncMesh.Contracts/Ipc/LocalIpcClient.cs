@@ -1,12 +1,16 @@
 using System.IO.Pipes;
 using System.Text.Json;
 
-namespace SyncMesh.Daemon.Ipc;
+namespace SyncMesh.Contracts.Ipc;
 
-// Reference client for the Tier 0 IPC listener — stands in for "the local
-// app" until a real one exists (see docs/05-implementation-guide.md Phase 1
-// scope: "accepting events from a stub local-app client"). Also used
-// directly by tests.
+// Reference client for the Tier 0 IPC listener (SyncMesh.Daemon.Ipc
+// .LocalIpcListener) — stands in for "the local app" until a real one
+// exists (see docs/05-implementation-guide.md Phase 1 scope: "accepting
+// events from a stub local-app client"). Also used directly by tests and
+// by SyncMesh.OrderBook.Api's command endpoints. Lives in
+// SyncMesh.Contracts (not SyncMesh.Daemon) specifically so a client-only
+// consumer like SyncMesh.OrderBook.Api doesn't have to reference the
+// entire daemon (NATS, tunnel, EF Core) just to reach this.
 public sealed class LocalIpcClient(string pipeName, string serverName = ".")
 {
     public async Task<AppendEventResponse> AppendEventAsync(AppendEventRequest request, CancellationToken ct = default)

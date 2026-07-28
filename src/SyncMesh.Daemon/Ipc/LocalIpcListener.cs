@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using SyncMesh.Contracts.Ipc;
 
 namespace SyncMesh.Daemon.Ipc;
 

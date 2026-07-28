@@ -98,15 +98,19 @@ builder.Services.AddHostedService<TunnelStatusPublisher>();
 
 // Worked example domain (SyncMesh.Contracts.OrderBook) demonstrating
 // commands -> events -> a genuine CQRS read model
-// (SyncMesh.OrderBook.Api) and mesh convergence. On by default so a
-// freshly-run dev topology is visibly alive — see
-// docs/06-data-model.md's Order Book Example Domain section.
+// (SyncMesh.OrderBook.Api) and mesh convergence — see docs/06-data-
+// model.md's Order Book Example Domain section. Both generators default
+// OFF (SyntheticOrderGeneratorOptions/MarketDataOptions) — a reusable
+// daemon component shouldn't fabricate data or call a live third-party
+// API with zero configuration; SyncMesh.AppHost's demo topology opts
+// daemon-a in explicitly so it's still visibly alive out of the box
+// there.
 builder.Services.AddHostedService<SyntheticOrderGenerator>();
 
 // Alternative order source: real, live-fetched stock prices instead of
 // random noise — this project's first dependency on a live external
 // network service, see docs/adr/0008-live-market-data-generator.md.
-// Independent of SyntheticOrderGenerator above; both default to enabled.
+// Independent of SyntheticOrderGenerator above; both default OFF.
 builder.Services.AddHttpClient(nameof(MarketDataOrderGenerator));
 builder.Services.AddHostedService<MarketDataOrderGenerator>();
 

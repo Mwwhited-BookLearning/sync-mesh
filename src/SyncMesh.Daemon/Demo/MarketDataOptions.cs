@@ -10,11 +10,17 @@ namespace SyncMesh.Daemon.Demo;
 // the live API: AAPL works, every other symbol 401s asking for a free
 // personal key) — a real key unlocks more symbols/headroom, get one at
 // https://twelvedata.com/pricing.
+//
+// Off by default: every SyncMesh.Daemon instance calling a live
+// third-party API on startup with zero configuration isn't a sensible
+// default for the reusable daemon component — see the 2026-07-28 review
+// finding. SyncMesh.AppHost's demo topology explicitly turns this on for
+// daemon-a.
 public sealed class MarketDataOptions
 {
     public const string SectionName = "Daemon:MarketDataGenerator";
 
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; }
 
     [Required]
     public string ApiKey { get; set; } = "demo";

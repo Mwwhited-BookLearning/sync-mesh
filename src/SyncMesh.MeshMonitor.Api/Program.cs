@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using SyncMesh.MeshMonitor.Api;
 using SyncMesh.MeshMonitor.Api.Auth;
@@ -39,21 +40,35 @@ builder.Services.AddSingleton<ITicketStore, TicketStore>();
 builder.Services.AddHostedService<TicketCleanupService>();
 builder.Services
     .AddAuthentication()
-    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
-    {
-        var authOptions = builder.Configuration.GetSection(MeshMonitorAuthOptions.SectionName).Get<MeshMonitorAuthOptions>()
-            ?? new MeshMonitorAuthOptions();
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(authOptions.SigningKey)),
-            ValidateIssuer = authOptions.Issuer is not null,
-            ValidIssuer = authOptions.Issuer,
-            ValidateAudience = authOptions.Audience is not null,
-            ValidAudience = authOptions.Audience,
-        };
-    })
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, _ => { })
     .AddScheme<TicketAuthenticationOptions, TicketAuthenticationHandler>(TicketAuthenticationHandler.SchemeName, _ => { });
 builder.Services.AddAuthorization();
+
+// JwtBearerOptions doesn't expose a DI-aware AddJwtBearer overload, so
+// the injected IOptions<MeshMonitorAuthOptions> (bound/validated above)
+// is wired in via the standard OptionsBuilder<T>.Configure<TDep> pattern
+// instead of a second raw GetSection(...).Get<T>() read — see CLAUDE.md
+// → Configuration. A second raw read also used to bypass
+// ValidateDataAnnotations entirely for this code path.
+builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<MeshMonitorAuthOptions>>((jwtOptions, authOptions) =>
+    {
+        var auth = authOptions.Value;
+        jwtOptions.TokenValidationParameters = new TokenValidationParameters
+        {
+            IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(auth.SigningKey)),
+            // string.IsNullOrEmpty, not "is not null": an unset Issuer/
+            // Audience binds to "" (MeshMonitorAuthOptions' default),
+            // never a real null, from configuration providers — "is not
+            // null" was always true, silently validating against an
+            // empty string and rejecting every real token whenever an
+            // issuer/audience wasn't explicitly configured.
+            ValidateIssuer = !string.IsNullOrEmpty(auth.Issuer),
+            ValidIssuer = auth.Issuer,
+            ValidateAudience = !string.IsNullOrEmpty(auth.Audience),
+            ValidAudience = auth.Audience,
+        };
+    });
 
 var app = builder.Build();
 

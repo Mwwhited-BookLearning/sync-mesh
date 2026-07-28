@@ -38,9 +38,31 @@ public sealed class OrderBookStore : IOrderBookStore
 {
     private readonly ConcurrentDictionary<Guid, OrderView> _orders = new();
 
-    public void Place(OrderView order) => _orders.TryAdd(order.OrderId, order);
+    // Tombstones every cancelled order id, permanently. Without this, a
+    // Cancel that arrives before its Place (CLAUDE.md rule 4: consumers
+    // must tolerate out-of-local-arrival-order delivery — a genuinely
+    // possible replay/replication ordering, not a hypothetical) would
+    // no-op against an empty _orders, and the later Place would then
+    // resurrect the cancelled order permanently. Unbounded growth is an
+    // accepted POC-scale tradeoff, same as this store's own in-memory
+    // _orders dictionary having no eviction.
+    private readonly ConcurrentDictionary<Guid, byte> _cancelledOrderIds = new();
 
-    public void Cancel(Guid orderId) => _orders.TryRemove(orderId, out _);
+    public void Place(OrderView order)
+    {
+        if (_cancelledOrderIds.ContainsKey(order.OrderId))
+        {
+            return;
+        }
+
+        _orders.TryAdd(order.OrderId, order);
+    }
+
+    public void Cancel(Guid orderId)
+    {
+        _cancelledOrderIds[orderId] = 0;
+        _orders.TryRemove(orderId, out _);
+    }
 
     public OrderBookView Snapshot(string symbol)
     {

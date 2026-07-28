@@ -1,15 +1,17 @@
 namespace SyncMesh.Daemon.Demo;
 
 // Bound from the "Daemon:SyntheticOrderGenerator" configuration section —
-// see ARCHITECTURE.md -> Configuration. On by default so a freshly-run
-// dev topology (SyncMesh.AppHost) is visibly alive without any manual
-// steps — this is what makes "leaf nodes generating data to be
-// replicated across the mesh" something you can actually watch happen.
+// see ARCHITECTURE.md -> Configuration. Off by default: SyncMesh.Daemon is
+// the real, reusable daemon component, and fabricating orders on every
+// run isn't a sensible zero-configuration default for it — see the
+// 2026-07-28 review finding. SyncMesh.AppHost's demo topology explicitly
+// turns this on for daemon-a so the mesh is still visibly alive there
+// without any manual steps.
 public sealed class SyntheticOrderGeneratorOptions
 {
     public const string SectionName = "Daemon:SyntheticOrderGenerator";
 
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; }
     public TimeSpan Interval { get; set; } = TimeSpan.FromSeconds(5);
     public List<string> Symbols { get; set; } = ["ACME", "GLOBEX", "INITECH"];
     public decimal MinPrice { get; set; } = 10m;
