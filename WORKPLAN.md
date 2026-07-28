@@ -332,6 +332,13 @@ served correctly by a live `SyncMesh.MeshMonitor.Api` instance. TLS for
 this dashboard remains deferred to `PRODUCTION-HARDENING.md`, not
 resolved by adding auth.
 
+**Not a gap, but the one loose end if this is picked back up**: this
+project still doesn't issue bearer tokens itself — `ConnectView` expects
+an operator to already have one from an external issuer (confirmed as a
+deliberate scope decision, not an oversight — see ADR-0009's Context).
+If a future session wants the auth story to feel complete rather than
+half-stubbed, that's the next piece, not anything broken today.
+
 ### Event Lineage (Provenance) Schema ✅ Done
 
 See [ADR-0006](docs/adr/0006-event-lineage-descriptive-provenance.md).
