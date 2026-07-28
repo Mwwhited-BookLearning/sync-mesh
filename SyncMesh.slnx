@@ -9,6 +9,7 @@
     <Project Path="src/SyncMesh.EventStore/SyncMesh.EventStore.csproj" />
     <Project Path="src/SyncMesh.MeshMonitor.Api/SyncMesh.MeshMonitor.Api.csproj" />
     <Project Path="src/SyncMesh.MonitorClient/SyncMesh.MonitorClient.csproj" />
+    <Project Path="src/SyncMesh.OrderBook.Api/SyncMesh.OrderBook.Api.csproj" />
     <Project Path="src/SyncMesh.ServerHost/SyncMesh.ServerHost.csproj" />
     <Project Path="src/SyncMesh.ServiceDefaults/SyncMesh.ServiceDefaults.csproj" />
     <Project Path="src/SyncMesh.TunnelClient/SyncMesh.TunnelClient.csproj" />
@@ -21,6 +22,7 @@
     <Project Path="tests/SyncMesh.Daemon.Tests/SyncMesh.Daemon.Tests.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.Postgres/SyncMesh.EventStore.Tests.Postgres.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.Sqlite/SyncMesh.EventStore.Tests.Sqlite.csproj" />
+    <Project Path="tests/SyncMesh.OrderBook.Tests/SyncMesh.OrderBook.Tests.csproj" />
     <Project Path="tests/SyncMesh.EventStore.Tests.SqlServer/SyncMesh.EventStore.Tests.SqlServer.csproj" />
     <Project Path="tests/SyncMesh.Sync.Tests/SyncMesh.Sync.Tests.csproj" />
   </Folder>

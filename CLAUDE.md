@@ -83,8 +83,12 @@ tradeoff explicitly to the human first.
   application. Only pull something into development/design scope when it
   genuinely can't be externally isolated — e.g. the app's own correctness
   guarantees (idempotent apply, replay ordering) depend on it.
-- **This project is a PoC/teaching example of meshed event sourcing +
-  CQRS — not a path to a real production deployment.** Ops/compliance
+- **This project is a PoC/teaching example of meshed event sourcing —
+  not a path to a real production deployment.** (Not CQRS: there is no
+  separate, denormalized read model built from the sourced events — the
+  daemon's read path queries the same append-only event table the write
+  path inserts into. Don't describe this project as CQRS elsewhere unless
+  that changes.) Ops/compliance
   sign-off questions, TLS/service-credential wiring, the tunnel security
   review, retention compliance sign-off, and real-scale topology
   decisions are all consolidated in one place —

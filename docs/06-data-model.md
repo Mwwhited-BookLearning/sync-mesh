@@ -290,3 +290,75 @@ unchanged — `ApplyResponder` inserts the corresponding `EventLineage` rows
 alongside the `EventRecord` insert, gated by the exact same
 already-applied idempotency check that protects `EventRecord` itself, so
 lineage rows can never be double-inserted for the same event.
+
+## 8. Order Book Example Domain
+
+A worked example built on the generic `EventEnvelope`/`EventRecord`
+machinery — "stock trading with an order book" — demonstrating commands
+→ events → a genuine CQRS read model, and mesh convergence you can watch
+happen rather than only prove in tests. See
+`src/SyncMesh.Contracts.OrderBook`, `src/SyncMesh.OrderBook.Api`, and
+`src/SyncMesh.Daemon/Demo/SyntheticOrderGenerator.cs`.
+
+**Deliberately no trade matching.** A real distributed matching engine
+needs strong consistency (to avoid double-filling the same order from two
+sites at once) that this mesh's design explicitly doesn't provide — see
+`ARCHITECTURE.md`'s "full eventual replication, not consensus" principle.
+Building matching would contradict the architecture, not demonstrate it.
+This domain only has `OrderPlaced`/`OrderCancelled` — an order book, not a
+trading engine.
+
+**Events**:
+
+| Event type | Payload | Meaning |
+|---|---|---|
+| `OrderPlaced` | `{Symbol, Side, Price, Quantity, TraderId}` | A new open order |
+| `OrderCancelled` | `{}` (empty) | The order identified by `StreamId` is withdrawn |
+
+**`StreamId = OrderId` — a load-bearing constraint, not an arbitrary
+choice.** `EventEnvelope`'s own doc comments establish that `StreamId` is
+effectively owned by whichever origin writes to it: `StreamVersion` is
+computed from each daemon's own *local* table only, with no cross-site
+coordination. Two different daemons writing to the *same* `StreamId`
+would each independently compute overlapping version numbers, and
+`ApplyResponder` correctly treats a `(StreamId, StreamVersion)` collision
+from a different `GlobalEventId` as a genuine data-integrity error, not a
+safe duplicate — it rethrows rather than silently drops one side. So:
+**one order is exactly one stream, created and exclusively owned by
+whichever daemon places it** — never shared/contended across sites. A
+cancellation must be submitted through that *same* daemon (the read model
+tracks each order's `OriginSiteId` precisely so a caller can route a
+cancel correctly).
+
+The *aggregated* view across many independent per-order streams — the
+order book per symbol, converging orders placed at different sites — is
+exactly what the read-model projection (`OrderBookProjector`) is for. This
+is the concrete lesson for building any future example domain on this
+event store: don't share one stream across origins; fold many
+single-origin streams into a read model instead.
+
+**Read model** (`SyncMesh.OrderBook.Api.OrderBookStore`) — genuinely
+distinct from the write-side `EventRecord` table, unlike
+`SyncMesh.Daemon.Ipc.LocalEventReader` (which just re-queries the same
+table it wrote to): an in-memory, denormalized view keyed by `OrderId`,
+folded by `OrderBookProjector` polling a *single* server's
+`EventStoreDbContext` for newly-applied `OrderPlaced`/`OrderCancelled`
+events, ordered by `(HlcPhysicalTicks, HlcLogicalCounter)`. Deliberately
+reads from only one of the two demo servers' databases — orders placed at
+the *other* site converging into this one server's view is the concrete
+proof the mesh's "every server converges to the same history" promise
+actually holds.
+
+**Order generators** — two independent, config-selectable sources feed
+this domain, both running on each daemon (leaf node) by default:
+
+- `SyncMesh.Daemon.Demo.SyntheticOrderGenerator` — random prices.
+- `SyncMesh.Daemon.Demo.MarketDataOrderGenerator` — real, live-fetched
+  stock prices (Twelve Data's free `/price` endpoint). See
+  `docs/adr/0008-live-market-data-generator.md` — this project's first
+  dependency on a live external network service, flagged explicitly as
+  such. Zero-setup default (`ApiKey="demo"`, `Symbols=["AAPL"]`) verified
+  directly against the live API; every other symbol needs the user's own
+  free key. Degrades to "skip this tick, log a warning" on any network/
+  API failure — never crashes the daemon or affects its actual
+  durability/forwarding guarantees.

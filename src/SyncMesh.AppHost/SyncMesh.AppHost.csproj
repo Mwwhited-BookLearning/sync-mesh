@@ -4,6 +4,7 @@
     <ProjectReference Include="..\SyncMesh.Daemon\SyncMesh.Daemon.csproj" />
     <ProjectReference Include="..\SyncMesh.ServerHost\SyncMesh.ServerHost.csproj" />
     <ProjectReference Include="..\SyncMesh.MeshMonitor.Api\SyncMesh.MeshMonitor.Api.csproj" />
+    <ProjectReference Include="..\SyncMesh.OrderBook.Api\SyncMesh.OrderBook.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>

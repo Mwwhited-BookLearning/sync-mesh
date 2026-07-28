@@ -5,6 +5,7 @@ using NATS.Client.JetStream;
 using SyncMesh.Contracts;
 using SyncMesh.Daemon;
 using SyncMesh.Daemon.Ipc;
+using SyncMesh.Daemon.Demo;
 using SyncMesh.Daemon.Nats;
 using SyncMesh.Daemon.Tunnel;
 using SyncMesh.EventStore;
@@ -34,6 +35,18 @@ builder.Services
 builder.Services
     .AddOptions<TunnelAgentOptions>()
     .Bind(builder.Configuration.GetSection(TunnelAgentOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<SyntheticOrderGeneratorOptions>()
+    .Bind(builder.Configuration.GetSection(SyntheticOrderGeneratorOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<MarketDataOptions>()
+    .Bind(builder.Configuration.GetSection(MarketDataOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
@@ -82,6 +95,20 @@ builder.Services.AddHostedService<MonitorPublisher>();
 builder.Services.AddSingleton<TunnelAgent>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TunnelAgent>());
 builder.Services.AddHostedService<TunnelStatusPublisher>();
+
+// Worked example domain (SyncMesh.Contracts.OrderBook) demonstrating
+// commands -> events -> a genuine CQRS read model
+// (SyncMesh.OrderBook.Api) and mesh convergence. On by default so a
+// freshly-run dev topology is visibly alive — see
+// docs/06-data-model.md's Order Book Example Domain section.
+builder.Services.AddHostedService<SyntheticOrderGenerator>();
+
+// Alternative order source: real, live-fetched stock prices instead of
+// random noise — this project's first dependency on a live external
+// network service, see docs/adr/0008-live-market-data-generator.md.
+// Independent of SyntheticOrderGenerator above; both default to enabled.
+builder.Services.AddHttpClient(nameof(MarketDataOrderGenerator));
+builder.Services.AddHostedService<MarketDataOrderGenerator>();
 
 var host = builder.Build();
 

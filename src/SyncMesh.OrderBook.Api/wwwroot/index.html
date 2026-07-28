@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Order Book Demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }
+  h1 { font-size: 1.25rem; }
+  h2 { font-size: 1rem; margin-top: 2rem; }
+  form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; margin-bottom: 1rem; }
+  label { display: flex; flex-direction: column; font-size: 0.8rem; color: #555; }
+  input, select { padding: 0.3rem; font-size: 0.9rem; }
+  button { padding: 0.4rem 0.8rem; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+  th, td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: right; font-size: 0.85rem; }
+  th { background: #f5f5f5; text-align: center; }
+  td.left { text-align: left; }
+  .bids th { background: #e6f4ea; }
+  .asks th { background: #fbe9e7; }
+  #status { color: #888; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>Order Book Demo — commands, queries, mesh convergence</h1>
+<p id="status">
+  Two sites (<code>site-a</code>, <code>site-b</code>), each with its own
+  daemon and server, peered into one mesh. Place an order through either
+  site; both daemons also generate synthetic orders automatically. The
+  book below is read from a single server's projected read model —
+  orders from both sites converging into one view is the point.
+</p>
+
+<h2>Place order</h2>
+<form id="place-form">
+  <label>Site
+    <select id="site">
+      <option value="site-a">site-a</option>
+      <option value="site-b">site-b</option>
+    </select>
+  </label>
+  <label>Symbol <input id="symbol" value="ACME" required></label>
+  <label>Side
+    <select id="side">
+      <option value="Buy">Buy</option>
+      <option value="Sell">Sell</option>
+    </select>
+  </label>
+  <label>Price <input id="price" type="number" step="0.01" value="100.00" required></label>
+  <label>Quantity <input id="quantity" type="number" step="1" value="10" required></label>
+  <label>Trader <input id="trader" value="demo-user" required></label>
+  <button type="submit">Place order</button>
+</form>
+
+<h2>Order book</h2>
+<label>Symbol to view <input id="view-symbol" value="ACME"></label>
+(known symbols: <span id="known-symbols">—</span>)
+
+<table class="bids">
+  <thead><tr><th colspan="6">Bids (buy)</th></tr><tr><th>Price</th><th>Qty</th><th class="left">Trader</th><th>Site</th><th>Placed</th><th>Action</th></tr></thead>
+  <tbody id="bids-body"></tbody>
+</table>
+
+<table class="asks">
+  <thead><tr><th colspan="6">Asks (sell)</th></tr><tr><th>Price</th><th>Qty</th><th class="left">Trader</th><th>Site</th><th>Placed</th><th>Action</th></tr></thead>
+  <tbody id="asks-body"></tbody>
+</table>
+
+<script>
+async function placeOrder(e) {
+  e.preventDefault();
+  const body = {
+    siteId: document.getElementById('site').value,
+    symbol: document.getElementById('symbol').value,
+    side: document.getElementById('side').value,
+    price: parseFloat(document.getElementById('price').value),
+    quantity: parseFloat(document.getElementById('quantity').value),
+    traderId: document.getElementById('trader').value,
+  };
+  const res = await fetch('/api/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    alert('Failed to place order: ' + await res.text());
+    return;
+  }
+  document.getElementById('view-symbol').value = body.symbol;
+  await refresh();
+}
+
+async function cancelOrder(orderId, siteId) {
+  await fetch(`/api/orders/${orderId}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteId }),
+  });
+  await refresh();
+}
+
+function renderRows(tbodyId, orders) {
+  const tbody = document.getElementById(tbodyId);
+  tbody.innerHTML = orders.map(o => `
+    <tr>
+      <td>${o.price.toFixed(2)}</td>
+      <td>${o.quantity}</td>
+      <td class="left">${o.traderId}</td>
+      <td>${o.originSiteId}</td>
+      <td>${new Date(o.placedAtUtc).toLocaleTimeString()}</td>
+      <td><button onclick="cancelOrder('${o.orderId}', '${o.originSiteId}')">Cancel</button></td>
+    </tr>
+  `).join('');
+}
+
+async function refresh() {
+  const symbols = await (await fetch('/api/orderbook')).json();
+  document.getElementById('known-symbols').textContent = symbols.length ? symbols.join(', ') : '(none yet)';
+
+  const symbol = document.getElementById('view-symbol').value.trim();
+  if (!symbol) return;
+
+  const book = await (await fetch(`/api/orderbook/${encodeURIComponent(symbol)}`)).json();
+  renderRows('bids-body', book.bids);
+  renderRows('asks-body', book.asks);
+}
+
+document.getElementById('place-form').addEventListener('submit', placeOrder);
+document.getElementById('view-symbol').addEventListener('change', refresh);
+refresh();
+setInterval(refresh, 2000);
+</script>
+
+</body>
+</html>

@@ -30,6 +30,7 @@ tooling"). New feature work should add a companion doc under
 | Ancillary — Mesh Monitor Dashboard | 🚧 In progress (backend only, not phase-numbered) | [ADR-0005](docs/adr/0005-mesh-monitor-dashboard.md), [Design doc §4.6](docs/00-design-document.md), [Data model §6](docs/06-data-model.md), [c4-diagrams.md](docs/c4-diagrams.md), [ui-wireframes.md](docs/ui-wireframes.md) |
 | Ancillary — Event Lineage (Provenance) Schema | ✅ Done | [ADR-0006](docs/adr/0006-event-lineage-descriptive-provenance.md), [Data model §7](docs/06-data-model.md) |
 | 5 — Interactive Tunnel + Relay Fallback | ✅ Done | [ADR-0004](docs/adr/0004-separate-tunnel-from-event-mesh.md), [ADR-0007](docs/adr/0007-custom-reverse-tunnel-mechanism.md), [remote-monitoring-tunnel.md](docs/bdd/design/remote-monitoring-tunnel.md) (includes Tunnel Fallback diagram) |
+| Ancillary — Order Book Demo (Commands/Queries/CQRS) | ✅ Done | [Data model §8](docs/06-data-model.md), `src/SyncMesh.OrderBook.Api` |
 | 6 — Production Hardening | 🚫 Out of scope for this PoC | [PRODUCTION-HARDENING.md](PRODUCTION-HARDENING.md) |
 
 ---
@@ -313,6 +314,66 @@ across all three providers (SQLite/Postgres/SQL Server), `EventEnvelope`/
 `AppendEventRequest` wire contract additions, `LocalEventWriter`/
 `ApplyResponder` write/apply-path threading, and migration tests are all
 complete — see `docs/06-data-model.md` §7 for the full shape.
+
+### Order Book Demo (Commands/Queries/CQRS) ✅ Done
+
+An example domain — "stock trading with an order book" — built on the
+generic `EventEnvelope`/`EventRecord` machinery specifically to demonstrate
+commands → events → a genuine CQRS read model and mesh convergence you
+can watch happen, not just prove in tests (see recent audit finding: the
+project's own "event sourcing + CQRS" claim didn't hold up until this —
+`LocalEventReader` alone just re-queries the write-side table). See
+`docs/06-data-model.md` §8 for the full design, especially why
+`StreamId = OrderId` (one order = one stream, never shared across
+origins) is a load-bearing constraint, not an arbitrary choice.
+
+- **`SyncMesh.Contracts.OrderBook`** — the two example domain events
+  (`OrderPlaced`, `OrderCancelled`).
+- **`SyncMesh.OrderBook.Api`** (new project) — command endpoints
+  (`POST /api/orders`, `POST /api/orders/{id}/cancel`, routing through the
+  correct site's daemon via `LocalIpcClient` — reused as-is, it already
+  existed as "the reference client until a real local app exists"), query
+  endpoints (`GET /api/orderbook(/​{symbol})`, served from
+  `IOrderBookStore`), `OrderBookProjector` (the actual read model — polls
+  one server's `EventStoreDbContext`, folds `OrderPlaced`/`OrderCancelled`
+  into a denormalized in-memory book), and a self-contained
+  `wwwroot/index.html` test UI (place/cancel orders, poll the book every
+  2s) — deliberately plain HTML/JS, no SPA framework, since this is
+  explicitly "a test UI."
+- **`SyncMesh.Daemon.Demo.SyntheticOrderGenerator`** — on by default,
+  generates/cancels random orders in-process so "leaf nodes generating
+  data replicated across the mesh" is something you can watch happen as
+  soon as the topology runs, not something you have to trigger manually.
+- **`SyncMesh.Daemon.Demo.MarketDataOrderGenerator`** — an independent,
+  config-selectable alternative order source using real, live-fetched
+  stock prices (Twelve Data's free `/price` endpoint) instead of random
+  noise. See [ADR-0008](docs/adr/0008-live-market-data-generator.md) —
+  this project's first dependency on a live external network service,
+  flagged explicitly rather than folded in as "just another generator."
+  Zero-setup default (`ApiKey="demo"`, `Symbols=["AAPL"]`) verified
+  directly against the live API before shipping; degrades to "skip this
+  tick, log a warning" on any network/API failure, same as every other
+  background publisher in this codebase.
+- **`SyncMesh.AppHost` expanded to a full two-site multi-server mesh** —
+  previously wired exactly one daemon + one server; now two complete
+  sites (`site-a`/`site-b`, each own Postgres database, NATS hub+leaf
+  pair, `ServerHost`, `Daemon`), with the two `ServerHost`s peered
+  directly (`ServerMeshOptions.Peers`, the same point-to-point mechanism
+  proved in Phase 3's tests, now live in the dev topology for the first
+  time). `orderbook-api`'s read model polls only site A's database —
+  orders placed at site B converging into that view is the concrete
+  proof the mesh's convergence promise holds.
+- **Deliberately no trade matching** — a real distributed matching engine
+  needs strong consistency this mesh's design explicitly doesn't provide
+  (see `ARCHITECTURE.md`'s "full eventual replication, not consensus"
+  principle); building it would contradict the architecture, not
+  demonstrate it. Confirmed with the user before implementation.
+- **Test coverage**: `tests/SyncMesh.OrderBook.Tests` — unit tests of
+  `OrderBookStore`'s fold logic only (place/cancel/sort/convergence), no
+  BDD/Testcontainers suite — a deliberate scope choice matching the
+  existing precedent that `SyncMesh.MeshMonitor.Api` itself has no
+  backend test project either; this is a worked example, not a phase
+  deliverable with entry/exit criteria.
 
 ---
 

@@ -327,6 +327,85 @@ data model `docs/06-data-model.md` §7.
   detaching `record` (as the original pre-lineage code did) would leave
   stale tracked `EventLineage` instances behind.
 
+## Order Book demo (example domain — commands, queries, CQRS)
+
+See `docs/06-data-model.md` §8 for the full design. Conventions specific
+to `SyncMesh.OrderBook.Api`/`SyncMesh.Daemon.Demo`:
+
+- **`StreamId = OrderId` — the load-bearing lesson for any future example
+  domain built on this event store.** `StreamVersion` is computed from
+  each daemon's own *local* table only, with no cross-site coordination —
+  two different daemons writing to the *same* `StreamId` would each
+  independently claim overlapping version numbers, and `ApplyResponder`
+  correctly treats that collision as a genuine data-integrity error, not a
+  safe duplicate. One order = one stream, owned by whichever daemon
+  places it, is what avoids this entirely. Don't design a future example
+  domain around a stream shared across origins; fold many single-origin
+  streams into a read model instead, same as here.
+- **`OrderBookProjector` is a genuine CQRS read model, not just re-reading
+  the write-side table.** Unlike `SyncMesh.Daemon.Ipc.LocalEventReader`
+  (which queries the same `EventRecord` table the write path inserts
+  into), `OrderBookProjector` polls that table and folds matching events
+  into `OrderBookStore` — a separate, denormalized, in-memory structure
+  keyed by `OrderId`. This is what actually closes the gap the project's
+  "event sourcing + CQRS" framing had been claiming without evidence.
+- **The projector deliberately reads only one of the two demo servers'
+  databases.** Seeing orders placed at the *other* site converge into a
+  book built from a single server's database is the concrete proof the
+  mesh's "every server converges to the same history" promise holds — not
+  a shortcut to avoid querying both.
+- **Commands go through the real daemon IPC path, not a shortcut.**
+  `SyncMesh.OrderBook.Api` plays the role of "the local app" — it calls
+  `SyncMesh.Daemon.Ipc.LocalIpcClient` (already existed, marked in its own
+  doc comment as "the reference client until a real one exists") against
+  the correct site's named pipe, exercising the genuine Local App →
+  Daemon → Server → Mesh path.
+- **No trade matching, deliberately.** A real distributed matching engine
+  needs strong consistency this mesh's design explicitly doesn't provide
+  (see "Sync model & security baseline" below — full eventual
+  replication, not consensus). Building one would contradict the
+  architecture this whole project demonstrates, not showcase it. This
+  domain only has `OrderPlaced`/`OrderCancelled` — an order book, not a
+  trading engine — confirmed with the user as a scope decision before
+  implementation, not assumed.
+- **Synthetic traffic runs in-process, not through IPC.**
+  `SyntheticOrderGenerator` calls `LocalEventWriter` directly (it's a
+  `BackgroundService` inside the same daemon process that owns that
+  writer) — no named-pipe round-trip needed, unlike the demo API's
+  commands, which genuinely are a separate process.
+- **`MarketDataOrderGenerator` is this project's first dependency on a
+  live external network service** — see
+  `docs/adr/0008-live-market-data-generator.md`. Same in-process
+  `LocalEventWriter` write path as `SyntheticOrderGenerator`, just sourced
+  from a real HTTP call instead of `Random`. Every failure mode (network
+  down, timeout, rate-limited, invalid/unsupported symbol) degrades to
+  "log a warning, skip this tick" — including the case where the
+  provider's own rejection comes back as HTTP 200 with an error-shaped
+  JSON body (`{"code":401,...}`) rather than a non-2xx status, which is
+  checked for explicitly rather than inferred from the status code alone.
+  Independent of `SyntheticOrderGenerator` — both default to enabled, and
+  either can be turned off via config without touching the other.
+- **`SyncMesh.AppHost`'s two-site topology is the first time server-mesh
+  peering (`ServerMeshOptions.Peers`, proved in Phase 3's tests) runs in
+  the live dev topology, not only Testcontainers.** Each site's tunnel
+  ports (`TunnelAgentOptions.DirectListenPort`, `TunnelRelayOptions
+  .AgentListenPort`/`ClientListenPort`) needed explicit distinct literal
+  values for site B — unlike the NATS containers (which get dynamic,
+  Aspire-managed ports via declared endpoints), the tunnel's plain TCP
+  listeners aren't Aspire-managed endpoints, so two sites' daemon/server
+  *processes* sharing one machine's port space would otherwise collide.
+- **Known gap, not fixed here**: `SyncMesh.MeshMonitor.Api` only
+  subscribes to site A's NATS hub — site B's daemon/server telemetry is
+  on a fully separate NATS cluster (only the `ServerHost`↔`ServerHost`
+  mesh peering bridges the two sites, and only for event replication, not
+  general pub/sub) and never reaches it. Out of scope for this pass.
+- **Test coverage is unit tests only, matching the `SyncMesh.MeshMonitor
+  .Api` precedent** (which itself has no backend test project at all) —
+  `OrderBookStore`'s fold logic is pure and cheap to test in isolation
+  (`tests/SyncMesh.OrderBook.Tests`); no BDD/Testcontainers suite exists
+  for this, a deliberate scope choice since this is a worked example, not
+  a phase deliverable with entry/exit criteria.
+
 ## Configuration
 
 Every tunable (buffer caps, timeouts, retention, reconnect/backoff, subject

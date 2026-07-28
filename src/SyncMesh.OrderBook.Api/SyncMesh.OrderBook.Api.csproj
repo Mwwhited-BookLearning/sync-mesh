@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SyncMesh.Contracts\SyncMesh.Contracts.csproj" />
+    <ProjectReference Include="..\SyncMesh.EventStore\SyncMesh.EventStore.csproj" />
+    <ProjectReference Include="..\SyncMesh.Daemon\SyncMesh.Daemon.csproj" />
+    <ProjectReference Include="..\SyncMesh.ServiceDefaults\SyncMesh.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>
