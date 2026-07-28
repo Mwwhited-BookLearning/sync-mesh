@@ -69,13 +69,34 @@ sandbox" and `UI-ARCHITECTURE.md` (frontend-specific).
       shapes — no `--profile` flag needed, just `-f
       deploy/compose/<model>.yml`), plus a repo-root `docker-compose.yml`
       composite that `include:`s all six (a plain `docker compose up -d`
-      there starts every model at once) + `Properties/launchSettings.json`
-      profiles on `SyncMesh.Daemon`/`SyncMesh.ServerHost`, one per
-      node-role per model. Mesh-model nodes each get their own Postgres
-      database (not shared), so convergence is genuinely proven.
-      Smoke-tested `client-onprem` fully live: real event, real daemon,
-      real server, real Postgres row. How-to in
-      `docs/10-running-deployment-models.md`.
+      there starts every model at once). Mesh-model nodes each get their
+      own Postgres database (not shared), so convergence is genuinely
+      proven. Smoke-tested `client-onprem` fully live: real event, real
+      daemon, real server, real Postgres row. How-to in
+      `docs/10-running-deployment-models.md` — that doc's "Option B" runs
+      `SyncMesh.Daemon`/`SyncMesh.ServerHost` with explicit environment
+      variables, **not** named launch profiles: neither project has a
+      `launchSettings.json` (an earlier version of this entry incorrectly
+      claimed one existed per node-role per model; corrected here).
+- [x] **`SyncMesh.AppHost` now supports all six models too** (2026-07-28),
+      selected by setting one environment variable — `DeploymentModel=
+      client-isolated dotnet run --project src/SyncMesh.AppHost` — as an
+      easier alternative to Option B above (one command, no manual
+      Compose + per-project env-var wiring). A local
+      `launchSettings.json` profile per model also exists for dropdown
+      convenience, but — like every `launchSettings.json` in this repo —
+      it's gitignored and won't exist on a fresh clone, so the env var is
+      the documented/portable mechanism, not the profile. Leaving
+      `DeploymentModel` unset still gets the original, unchanged two-site
+      Order Book demo topology. See `ARCHITECTURE.md` → "AppHost:
+      selectable deployment-model topologies" and `docs/10-running-
+      deployment-models.md` → "Option A". Live-verified: the default
+      topology unaffected (cross-site convergence still holds), plus
+      `client-isolated`, `standalone-server`, `client-onprem`, and
+      `full-mesh` each start correctly with real event flow where
+      applicable; `client-cloud`/`intra-site-mesh` share identical code
+      paths with `client-onprem`/`full-mesh` and weren't separately
+      smoke-tested.
 
 ## Phase 0 — Project Setup
 

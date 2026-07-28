@@ -330,9 +330,11 @@ per-instance remote monitoring (§4.5).
 
 ### AppHost dev topology: server tier runs on SQLite
 
-`src/SyncMesh.AppHost` (the two-site, full-mesh dev topology used for the
-Order Book demo and this dashboard) runs `ServerHost`'s event store on
-SQLite, not Postgres — see `docs/adr/0001-event-store-on-ef-core.md`'s
+`src/SyncMesh.AppHost`'s default topology (the two-site full-mesh shape
+used for the Order Book demo and this dashboard — see "AppHost:
+selectable deployment-model topologies" below for the other shapes it
+now also supports) runs `ServerHost`'s event store on SQLite, not
+Postgres — see `docs/adr/0001-event-store-on-ef-core.md`'s
 Amendment for the full reasoning. In short: a containerized Postgres
 here hit a compounding set of Aspire/DCP orchestration bugs unrelated to
 this project's own code, and since each site's `ServerHost` is a single
@@ -372,6 +374,81 @@ here. Mechanically:
   (documented for exactly this ambiguity under
   `KnownHostNames.Localhost`) fixed it; applied to every dynamic NATS URL
   in `AppHost.cs`, not just the ones that happened to fail first.
+
+### AppHost: selectable deployment-model topologies
+
+`SyncMesh.AppHost` no longer always builds the fixed two-site Order Book
+demo topology — it now supports all six shapes in
+`docs/08-deployment-models.md` too, selected by setting one environment
+variable, `DeploymentModel` (see `docs/10-running-deployment-models.md`
+→ "Option A"): `DeploymentModel=client-isolated dotnet run --project
+src/SyncMesh.AppHost`. A bare `dotnet run` with `DeploymentModel` unset
+still gets the original Order Book demo topology —
+`builder.Configuration["DeploymentModel"] ?? "order-book-demo"` in
+`AppHost.cs` is what guarantees that, independent of anything else.
+
+**The env var, not a launch profile, is the documented/portable
+mechanism.** `src/SyncMesh.AppHost/Properties/launchSettings.json` also
+has one profile per model (nicer for a local run/debug dropdown), but
+every `launchSettings.json` in this repo is gitignored
+(`**/Properties/launchSettings.json`) — a pre-existing, repo-wide
+convention (confirmed: none of `SyncMesh.MeshMonitor.Api`/`SyncMesh
+.OrderBook.Api`'s existing launchSettings.json files are tracked in git
+either), not something introduced for this feature. A profile created on
+one machine doesn't exist on a fresh clone or anyone else's checkout —
+the env var does, since it needs nothing committed at all. Docs lead
+with the env var for exactly this reason.
+
+- **Found while building this**: `docs/10-running-deployment-models.md`
+  referenced named `SyncMesh.Daemon`/`SyncMesh.ServerHost` launch profiles
+  (`OnPrem`, `ClientToOnPrem`, `MeshNodeA`, etc.) for the standalone
+  docker-compose path — confirmed neither project has a
+  `launchSettings.json` at all. Those were documented but never built;
+  there was nothing to copy from. That doc's "Option B" now shows the
+  explicit environment variables instead of the phantom profile names.
+- **Structuring: 4 local functions, flat 7-way switch — not a generic
+  topology builder.** `AddNatsHubLeafPair`/`AddStandaloneNats`/
+  `AddServerHost`/`AddDaemon` each wrap one resource-block shape that's
+  reused across 2+ models; the switch statement itself, and anything
+  that's genuinely unique to one model (`mesh-monitor-api`,
+  `orderbook-api` — only in `order-book-demo`), stays flat and inline.
+  A fully generic "does this model have a monitor/leaf-split/daemon"
+  builder was deliberately not built — over-engineered for a fixed,
+  small model count (`CLAUDE.md`: "three similar lines is better than a
+  premature abstraction").
+- **The `order-book-demo` case is untouched, verbatim** — not routed
+  through the new local functions, even though it could reuse
+  `AddServerHost`/`AddDaemon` for its two sites. Deliberate: this
+  guarantees zero regression risk to the one topology the Order Book
+  demo and Mesh Monitor dashboard both depend on, at the cost of some
+  duplication between it and the new functions' near-identical shape.
+- **`intra-site-mesh` vs. `full-mesh` differ only in peer wiring**, both
+  reduced to three `ServerHost`s (A/B/C) per `docs/10-running-deployment-
+  models.md`'s existing (if previously unbuilt) "B is the gateway"
+  naming: `intra-site-mesh` peers A↔B and B↔C only; `full-mesh` peers all
+  three pairwise. Neither needs a `Daemon` — matches that doc's existing
+  "(none — server-mesh only)" note for both.
+- **`standalone-server`'s daemon and server share one NATS container**,
+  no leaf/hub split — simpler than modeling a separate Tier 1↔2 leaf
+  connection for a model whose whole point is "zero peers," not
+  cross-site connectivity. Confirmed safe before building this:
+  `ServerMeshOptions.Peers` defaults to `[]`, and both
+  `ServerMeshSetup`/`MeshForwarder` handle an empty peer list as a
+  clean no-op (no crash, no special-casing needed in either type).
+- **Every model with more than one `ServerHost`/`Daemon` instance needs
+  explicit, non-colliding literal tunnel ports** for every instance past
+  the first (`intra-site-mesh`/`full-mesh`'s B and C nodes use 7788/7789
+  and 7798/7799) — same convention the original two-site topology
+  already used for its second site; tunnel listeners are plain TCP, not
+  Aspire-managed dynamic endpoints.
+- Live-verified (2026-07-28): the default topology unchanged (cross-site
+  order convergence still holds exactly as before), plus
+  `client-isolated` (daemon runs indefinitely with no responder, no
+  crash), `standalone-server` and `client-onprem` (both show real event
+  flow — growing SQLite WAL files), and `full-mesh` (three `ServerHost`s
+  start cleanly with pairwise peers configured). `client-cloud` and
+  `intra-site-mesh` reuse the identical code paths as `client-onprem` and
+  `full-mesh` respectively and were not separately smoke-tested.
 
 ## Event lineage (provenance)
 
