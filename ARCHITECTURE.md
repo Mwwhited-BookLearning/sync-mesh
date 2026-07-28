@@ -307,10 +307,12 @@ per-instance remote monitoring (§4.5).
     TLS is still not part of this — the token and ticket both still cross
     the wire in cleartext, tracked in `PRODUCTION-HARDENING.md`,
     unaffected by this addition.
-- **`deploy/compose/*.yml` + `Properties/launchSettings.json` profiles**
-  on `SyncMesh.Daemon`/`SyncMesh.ServerHost` let any of the six documented
-  deployment models be stood up by hand for manual observation — see
-  `docs/10-running-deployment-models.md`. Each model has its own
+- **`deploy/compose/*.yml`**, paired with explicit environment variables
+  passed to `dotnet run` for `SyncMesh.Daemon`/`SyncMesh.ServerHost` (not
+  launch profiles — neither project has a `launchSettings.json`; see the
+  "Found while building this" note further down), let any of the six
+  documented deployment models be stood up by hand for manual observation
+  — see `docs/10-running-deployment-models.md`. Each model has its own
   standalone Compose file (no `--profile` flag needed); the repo-root
   `docker-compose.yml` is a composite that `include:`s all six, so a
   plain `docker compose up -d` there starts every model's infrastructure

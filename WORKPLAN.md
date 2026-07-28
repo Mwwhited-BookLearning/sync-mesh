@@ -98,6 +98,19 @@ sandbox" and `UI-ARCHITECTURE.md` (frontend-specific).
       correctly with real event flow where applicable;
       `client-cloud`/`intra-site-mesh` share identical code paths with
       `client-onprem`/`full-mesh` and weren't separately smoke-tested.
+- [x] **`SyncMesh.AppHost` containers grouped in Docker Desktop's GUI**
+      (2026-07-28): every `AddContainer(...)` call (all deployment
+      models, including the `order-book-demo` case's direct calls) now
+      sets a shared `com.docker.compose.project` label via
+      `.WithContainerRuntimeArgs(...)`, so Docker Desktop's GUI nests
+      them under one project view instead of showing flat individual
+      containers — purely visual, doesn't change how anything runs, and
+      deliberately not the same thing as Aspire's actual
+      `AddDockerComposeEnvironment` publish-as-compose feature (which
+      would require converting project resources to built container
+      images, losing the `dotnet run` source-based dev loop). See
+      `ARCHITECTURE.md` → "AppHost: selectable deployment-model
+      topologies" (the docker-label bullet).
 - [x] **`web/mesh-monitor` wired into `SyncMesh.AppHost` as its own
       resource** (2026-07-28), via `Aspire.Hosting.JavaScript`'s
       `AddViteApp` — the live `npm run dev` server with hot reload, not
